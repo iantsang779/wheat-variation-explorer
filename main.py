@@ -2,8 +2,8 @@
 main.py — FastAPI application for the Wheat Variation Explorer Dashboard.
 
 Endpoints:
-  GET  /                        → serves static/index.html
-  POST /api/query               → runs DB queries, caches result, returns JSON
+  GET  /                           → serves static/index.html
+  POST /api/query                  → runs DB queries, caches result, returns JSON
   GET  /api/download/csv/{token}   → streams CSV from in-memory cache
   GET  /api/download/excel/{token} → streams Excel from in-memory cache
 """
@@ -122,6 +122,7 @@ _STATIC_DIR = Path(__file__).parent / "static"
 class QueryRequest(BaseModel):
     variant_id: str | None = None
     transcript_id: str | None = None
+    consequence_types: list[str] | None = None
 
     @model_validator(mode="after")
     def at_least_one_field(self) -> "QueryRequest":
@@ -157,6 +158,11 @@ async def run_query(request: QueryRequest):
     try:
         variant_id = validate_input(request.variant_id, "variant_id")
         transcript_id = validate_input(request.transcript_id, "transcript_id")
+        consequence_types: list[str] = []
+        for ct in (request.consequence_types or []):
+            validated = validate_input(ct, "consequence_types")
+            if validated:
+                consequence_types.append(validated)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail={"error": str(exc)})
 
@@ -173,7 +179,10 @@ async def run_query(request: QueryRequest):
     db_name: str = app.state.variation_db_name
 
     try:
-        df, has_markers = await fetch_and_join(variation_pool, core_pool, variant_id, transcript_id)
+        df, has_markers = await fetch_and_join(
+            variation_pool, core_pool, variant_id, transcript_id,
+            consequence_types or None,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail={"error": str(exc)})
     except Exception as exc:

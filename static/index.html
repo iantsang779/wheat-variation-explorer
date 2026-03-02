@@ -126,6 +126,9 @@
       background: #1c2333;
     }
 
+    /* ── Checkbox ─────────────────────────────────────────── */
+    input[type="checkbox"] { accent-color: #7c3aed; cursor: pointer; }
+
     /* ── Sort arrows ──────────────────────────────────────── */
     .sort-icon { opacity: 0.4; user-select: none; }
     .sort-icon.active { opacity: 1; color: #a78bfa; }
@@ -175,7 +178,7 @@
         Search Parameters
       </h2>
 
-      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         <!-- Variant ID -->
         <div>
           <label class="block text-xs font-medium text-slate-400 mb-1.5">
@@ -206,6 +209,68 @@
             class="input-field w-full bg-surface-2 border border-slate-700 rounded-lg px-3 py-2.5
                    text-sm text-white placeholder-slate-600 transition"
           />
+        </div>
+
+        <!-- Consequence Types (checkbox dropdown) -->
+        <div class="relative" @click.away="consequenceDropdownOpen = false">
+          <label class="block text-xs font-medium text-slate-400 mb-1.5">
+            Consequence Types
+            <span class="ml-1 text-slate-600">(optional filter)</span>
+          </label>
+
+          <!-- Trigger button -->
+          <button
+            type="button"
+            @click="consequenceDropdownOpen = !consequenceDropdownOpen"
+            class="input-field w-full bg-surface-2 border border-slate-700 rounded-lg px-3 py-2.5
+                   text-sm text-white text-left flex items-center justify-between transition"
+            :class="consequenceDropdownOpen ? 'border-accent-light ring-2 ring-[#a78bfa]' : ''"
+          >
+            <span x-text="consequenceLabel" class="truncate text-slate-300"></span>
+            <svg class="w-4 h-4 text-slate-500 ml-2 flex-shrink-0 transition-transform duration-150"
+                 :class="{ 'rotate-180': consequenceDropdownOpen }"
+                 fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+            </svg>
+          </button>
+
+          <!-- Dropdown panel -->
+          <div
+            x-show="consequenceDropdownOpen"
+            x-transition:enter="transition ease-out duration-100"
+            x-transition:enter-start="opacity-0 -translate-y-1"
+            x-transition:enter-end="opacity-100 translate-y-0"
+            x-transition:leave="transition ease-in duration-75"
+            x-transition:leave-start="opacity-100 translate-y-0"
+            x-transition:leave-end="opacity-0 -translate-y-1"
+            class="absolute z-50 mt-1 w-full bg-surface-2 border border-slate-700
+                   rounded-lg shadow-2xl overflow-hidden"
+          >
+            <ul class="py-1 max-h-64 overflow-y-auto">
+              <template x-for="ct in CONSEQUENCE_TYPES" :key="ct">
+                <li>
+                  <label class="flex items-center gap-3 px-3 py-2 hover:bg-surface-1 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      :value="ct"
+                      x-model="selectedConsequenceTypes"
+                      class="w-4 h-4 rounded border-slate-600 bg-surface-2 flex-shrink-0"
+                    />
+                    <span class="text-sm text-slate-300" x-text="ct.replace(/_/g, ' ')"></span>
+                  </label>
+                </li>
+              </template>
+            </ul>
+            <div class="border-t border-slate-700 px-3 py-2 flex justify-between items-center">
+              <span class="text-xs text-slate-500"
+                    x-text="selectedConsequenceTypes.length + ' selected'"></span>
+              <button
+                type="button"
+                @click="selectedConsequenceTypes = []"
+                class="text-xs text-slate-500 hover:text-slate-300 transition"
+              >Clear</button>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -357,7 +422,7 @@
             </tr>
           </thead>
           <tbody class="divide-y divide-surface-2">
-            <template x-for="(row, rIdx) in sortedRows" :key="rIdx">
+            <template x-for="(row, rIdx) in pagedRows" :key="rIdx">
               <tr class="bg-surface-1 transition-colors">
                 <template x-for="col in columns" :key="col">
                   <td class="px-4 py-2.5 text-slate-300">
@@ -372,6 +437,51 @@
             </template>
           </tbody>
         </table>
+      </div>
+
+      <!-- Pagination -->
+      <div class="flex flex-wrap items-center justify-between gap-3 px-5 py-3 border-t border-surface-2">
+        <span class="text-xs text-slate-400">
+          Page <span x-text="currentPage"></span> of <span x-text="totalPages"></span>
+          &nbsp;·&nbsp; <span x-text="rows.length"></span> total rows
+        </span>
+        <div class="flex items-center gap-1">
+          <!-- First -->
+          <button
+            @click="currentPage = 1"
+            :disabled="currentPage === 1"
+            class="btn-outline px-2 py-1 rounded text-xs text-slate-400 disabled:opacity-30 disabled:cursor-not-allowed"
+          >«</button>
+          <!-- Prev -->
+          <button
+            @click="currentPage--"
+            :disabled="currentPage === 1"
+            class="btn-outline px-2 py-1 rounded text-xs text-slate-400 disabled:opacity-30 disabled:cursor-not-allowed"
+          >‹</button>
+          <!-- Page numbers -->
+          <template x-for="p in pageNumbers" :key="p">
+            <button
+              @click="currentPage = p"
+              :class="p === currentPage
+                ? 'bg-accent text-white border-accent'
+                : 'btn-outline text-slate-400'"
+              class="px-2.5 py-1 rounded text-xs font-medium border transition-colors"
+              x-text="p"
+            ></button>
+          </template>
+          <!-- Next -->
+          <button
+            @click="currentPage++"
+            :disabled="currentPage === totalPages"
+            class="btn-outline px-2 py-1 rounded text-xs text-slate-400 disabled:opacity-30 disabled:cursor-not-allowed"
+          >›</button>
+          <!-- Last -->
+          <button
+            @click="currentPage = totalPages"
+            :disabled="currentPage === totalPages"
+            class="btn-outline px-2 py-1 rounded text-xs text-slate-400 disabled:opacity-30 disabled:cursor-not-allowed"
+          >»</button>
+        </div>
       </div>
     </section>
 
@@ -395,9 +505,25 @@
   <script>
     function dashboardApp() {
       return {
+        // ── Consequence type options (hardcoded allowed list) ────
+        CONSEQUENCE_TYPES: [
+          '3_prime_UTR_variant',
+          '5_prime_UTR_variant',
+          'downstream_gene_variant',
+          'intron_variant',
+          'missense_variant',
+          'splice_acceptor_variant',
+          'splice_donor_variant',
+          'stop_gained',
+          'synonymous_variant',
+          'upstream_gene_variant',
+        ],
+
         // ── Form inputs ─────────────────────────────────────────
-        variantId:    '',
-        transcriptId: '',
+        variantId:                '',
+        transcriptId:             '',
+        selectedConsequenceTypes: ['missense_variant'],
+        consequenceDropdownOpen:  false,
 
         // ── UI state ────────────────────────────────────────────
         loading: false,
@@ -415,7 +541,18 @@
         sortCol: '',
         sortAsc: true,
 
-        // ── Computed: sorted rows ───────────────────────────────
+        // ── Pagination state ────────────────────────────────────
+        currentPage: 1,
+        pageSize: 30,
+
+        // ── Computed ────────────────────────────────────────────
+        get consequenceLabel() {
+          const n = this.selectedConsequenceTypes.length;
+          if (n === 0) return 'Any type (no filter)';
+          if (n === 1) return this.selectedConsequenceTypes[0].replace(/_/g, ' ');
+          return `${n} types selected`;
+        },
+
         get sortedRows() {
           if (!this.sortCol) return this.rows;
           const col = this.sortCol;
@@ -429,8 +566,29 @@
           });
         },
 
+        get totalPages() {
+          return Math.max(1, Math.ceil(this.rows.length / this.pageSize));
+        },
+
+        get pagedRows() {
+          const start = (this.currentPage - 1) * this.pageSize;
+          return this.sortedRows.slice(start, start + this.pageSize);
+        },
+
+        get pageNumbers() {
+          const total = this.totalPages;
+          const current = this.currentPage;
+          const delta = 2;
+          const pages = [];
+          for (let i = Math.max(1, current - delta); i <= Math.min(total, current + delta); i++) {
+            pages.push(i);
+          }
+          return pages;
+        },
+
         // ── Methods ─────────────────────────────────────────────
         async submitQuery() {
+          this.consequenceDropdownOpen = false;
           this.error   = '';
           this.rows    = [];
           this.columns = [];
@@ -442,14 +600,18 @@
             return;
           }
 
+          this.currentPage = 1;
           this.loading = true;
           try {
             const res = await fetch('/api/query', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
-                variant_id:    this.variantId.trim()    || null,
-                transcript_id: this.transcriptId.trim() || null,
+                variant_id:        this.variantId.trim()                    || null,
+                transcript_id:     this.transcriptId.trim()                 || null,
+                consequence_types: this.selectedConsequenceTypes.length > 0
+                                     ? this.selectedConsequenceTypes
+                                     : null,
               }),
             });
 
@@ -481,6 +643,7 @@
             this.sortCol = col;
             this.sortAsc = true;
           }
+          this.currentPage = 1;
         },
 
         downloadCSV() {
@@ -494,15 +657,18 @@
         },
 
         resetState() {
-          this.variantId    = '';
-          this.transcriptId = '';
-          this.error        = '';
-          this.rows         = [];
-          this.columns      = [];
-          this.token        = '';
-          this.rowCount     = 0;
-          this.hasMarkers   = false;
-          this.sortCol      = '';
+          this.variantId                = '';
+          this.transcriptId             = '';
+          this.selectedConsequenceTypes = ['missense_variant'];
+          this.consequenceDropdownOpen  = false;
+          this.error                    = '';
+          this.rows                     = [];
+          this.columns                  = [];
+          this.token                    = '';
+          this.rowCount                 = 0;
+          this.hasMarkers               = false;
+          this.sortCol                  = '';
+          this.currentPage              = 1;
         },
       };
     }

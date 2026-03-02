@@ -139,7 +139,7 @@ FROM transcript_variation a
     JOIN variation_feature b USING (variation_feature_id)
     JOIN variation c USING (variation_id)
 WHERE {where_clause}
-LIMIT 50
+LIMIT 300
 """
 
 _MARKER_SQL = """
@@ -147,7 +147,7 @@ SELECT d.name, e.left_primer, e.right_primer
 FROM marker_synonym d
     JOIN marker e USING (marker_id)
 WHERE d.name LIKE %s
-LIMIT 50
+LIMIT 300
 """
 
 
@@ -155,6 +155,7 @@ async def run_variant_query(
     pool: aiomysql.Pool,
     variant_id: str | None,
     transcript_id: str | None,
+    consequence_types: list[str] | None = None,
 ) -> list[dict]:
     """Query transcript_variation for the given inputs."""
     clauses: list[str] = []
@@ -166,6 +167,13 @@ async def run_variant_query(
     if transcript_id:
         clauses.append("a.feature_stable_id LIKE %s")
         params.append(f"{transcript_id}%")
+    if consequence_types:
+        # Match any row whose consequence_types SET contains at least one selected value
+        or_parts = " OR ".join(
+            "FIND_IN_SET(%s, a.consequence_types) > 0" for _ in consequence_types
+        )
+        clauses.append(f"({or_parts})")
+        params.extend(consequence_types)
 
     where_clause = " AND ".join(clauses)
     sql = _VARIANT_SQL_BASE.format(where_clause=where_clause)
@@ -189,6 +197,7 @@ async def fetch_and_join(
     core_pool: aiomysql.Pool,
     variant_id: str | None,
     transcript_id: str | None,
+    consequence_types: list[str] | None = None,
 ) -> tuple[pd.DataFrame, bool]:
     """
     Run queries concurrently (when possible) and return a merged DataFrame
@@ -202,12 +211,12 @@ async def fetch_and_join(
     if variant_id:
         # Run both queries concurrently against their respective DBs
         rows1, rows2 = await asyncio.gather(
-            run_variant_query(variation_pool, variant_id, transcript_id),
+            run_variant_query(variation_pool, variant_id, transcript_id, consequence_types),
             run_marker_query(core_pool, variant_id),
         )
     else:
         # transcript_id only — no markers to fetch
-        rows1 = await run_variant_query(variation_pool, variant_id, transcript_id)
+        rows1 = await run_variant_query(variation_pool, variant_id, transcript_id, consequence_types)
         rows2 = []
 
     if not rows1:
@@ -225,5 +234,15 @@ async def fetch_and_join(
         merged = pd.merge(df1, df2, on="variant_name", how="left")
     else:
         merged = df1
+
+    # Split variant_name (format: Variant.Chromosome.Location) into 3 columns
+    parts = merged["variant_name"].str.split(".", n=2, expand=True)
+    pos = merged.columns.tolist().index("variant_name")
+    merged.insert(pos, "Variant", parts[0])
+    merged.insert(merged.columns.tolist().index("variant_name"), "Chromosome",
+                  parts[1] if parts.shape[1] > 1 else None)
+    merged.insert(merged.columns.tolist().index("variant_name"), "Location",
+                  parts[2] if parts.shape[1] > 2 else None)
+    merged = merged.drop(columns=["variant_name"])
 
     return merged, has_markers
