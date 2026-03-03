@@ -173,7 +173,7 @@
   <main class="max-w-7xl mx-auto px-6 py-8 space-y-6">
 
     <!-- ── Query Panel ───────────────────────────────────────── -->
-    <section class="bg-surface-1 border border-surface-2 rounded-xl p-6 fade-in">
+    <section class="bg-surface-1 border border-surface-2 rounded-xl p-6 fade-in relative z-20">
       <h2 class="text-sm font-semibold text-slate-300 uppercase tracking-widest mb-4">
         Search Parameters
       </h2>
@@ -347,24 +347,6 @@
             <span x-text="rowCount + ' row' + (rowCount !== 1 ? 's' : '')"></span>
           </span>
 
-          <!-- Markers badge -->
-          <span
-            x-show="hasMarkers"
-            class="badge bg-emerald-900 text-emerald-300"
-          >
-            <svg class="w-3 h-3 mr-1.5" fill="currentColor" viewBox="0 0 20 20">
-              <path fill-rule="evenodd"
-                    d="M16.707 5.293a1 1 0 010 1.414L8.414 15 3.707 10.293a1 1 0 011.414-1.414L8.414 12.172l6.879-6.879a1 1 0 011.414 0z"
-                    clip-rule="evenodd"/>
-            </svg>
-            KASP markers found
-          </span>
-          <span
-            x-show="!hasMarkers && rows.length > 0"
-            class="badge bg-slate-800 text-slate-400"
-          >
-            No KASP markers
-          </span>
         </div>
 
         <!-- Download buttons -->
