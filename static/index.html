@@ -912,8 +912,8 @@
         <div class="flex flex-wrap gap-3">
           <template x-for="db in ['Pfam','Panther','Prosite','Prints','Superfamily']" :key="db">
             <label class="flex items-center gap-1.5 text-sm text-slate-700 cursor-pointer select-none">
-              <input type="checkbox" :value="db" x-model="paDomains"
-                     class="rounded border-slate-300 text-accent focus:ring-accent" />
+              <input type="radio" :value="db" x-model="paDomain" name="paDomain"
+                     class="border-slate-300 text-accent focus:ring-accent" />
               <span x-text="db"></span>
             </label>
           </template>
@@ -1157,7 +1157,7 @@
         // ── Annotate Protein tab — state ─────────────────────────
         paGeneId:        '',
         paSpecies:       '',
-        paDomains:       [],
+        paDomain:        '',
         paLoading:       false,
         paError:         '',
         paGeneId_result: '',
@@ -1499,8 +1499,8 @@
             this.paError = 'Please select a species.';
             return;
           }
-          if (this.paDomains.length === 0) {
-            this.paError = 'Please select at least one domain type.';
+          if (!this.paDomain) {
+            this.paError = 'Please select a domain type.';
             return;
           }
 
@@ -1512,7 +1512,7 @@
               body: JSON.stringify({
                 gene_id: this.paGeneId.trim(),
                 species: this.paSpecies,
-                domains: this.paDomains,
+                domains: [this.paDomain],
               }),
             });
             const data = await res.json();
@@ -1535,7 +1535,7 @@
         resetProtAnnotState() {
           this.paGeneId         = '';
           this.paSpecies        = '';
-          this.paDomains        = [];
+          this.paDomain         = '';
           this.paLoading        = false;
           this.paError          = '';
           this.paGeneId_result  = '';
@@ -1560,19 +1560,12 @@
           }
           const bps = Array.from(bpSet).sort((a, b) => a - b);
 
-          const PRIORITY = ['Pfam', 'Panther', 'Prosite', 'Prints', 'Superfamily'];
-
           const intervals = [];
           for (let i = 0; i < bps.length - 1; i++) {
             const a = bps[i], b = bps[i + 1];
             if (a >= b) continue;
-            // Find all domains covering [a, b) (1-indexed: domain_start-1 <= a AND domain_end >= b)
+            // Find domains covering [a, b) (1-indexed: domain_start-1 <= a AND domain_end >= b)
             const covering = doms.filter(d => (d.domain_start - 1) <= a && d.domain_end >= b);
-            covering.sort((x, y) => {
-              const px = PRIORITY.indexOf(x.domain_type);
-              const py = PRIORITY.indexOf(y.domain_type);
-              return (px === -1 ? 999 : px) - (py === -1 ? 999 : py);
-            });
             intervals.push({
               start:      a,
               end:        b,
