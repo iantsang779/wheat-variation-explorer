@@ -1,5 +1,5 @@
 """
-main.py — FastAPI application for the Wheat Variation Explorer Dashboard.
+main.py — FastAPI application for PlantBox.
 
 Endpoints:
   GET  /                           → serves static/index.html
