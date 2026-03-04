@@ -23,6 +23,22 @@ _CORE_DB_PREFIX = "triticum_aestivum_core_"
 _INPUT_RE = re.compile(r"^[\w.\-]+$")
 _MAX_INPUT_LEN = 100
 
+SUPPORTED_SPECIES = {
+    "triticum_aestivum":    "Wheat (Triticum aestivum)",
+    "oryza_sativa":         "Rice (Oryza sativa)",
+    "zea_mays":             "Maize (Zea mays)",
+    "hordeum_vulgare":      "Barley (Hordeum vulgare)",
+    "arabidopsis_thaliana": "Arabidopsis (Arabidopsis thaliana)",
+}
+
+DOMAIN_PREFIXES = {
+    "Pfam":        r"^PF",
+    "Panther":     r"^PTHR",
+    "Prints":      r"^PR",
+    "Prosite":     r"^PS",
+    "Superfamily": r"^SSF",
+}
+
 
 # ---------------------------------------------------------------------------
 # Input validation
@@ -246,3 +262,67 @@ async def fetch_and_join(
     merged = merged.drop(columns=["variant_name"])
 
     return merged, has_markers
+
+
+# ---------------------------------------------------------------------------
+# Protein domain query
+# ---------------------------------------------------------------------------
+
+_CANONICAL_TX_SQL = """
+SELECT transcript.stable_id AS stable_id
+FROM gene
+    JOIN transcript ON gene.canonical_transcript_id = transcript.transcript_id
+WHERE gene.stable_id = %s
+LIMIT 1
+"""
+
+
+async def fetch_canonical_transcript_id(pool: aiomysql.Pool, gene_id: str) -> str | None:
+    """Return the stable_id of the canonical transcript for *gene_id*, or None."""
+    rows = await _run_query(pool, _CANONICAL_TX_SQL, (gene_id,))
+    return rows[0]["stable_id"] if rows else None
+
+
+_DOMAIN_SQL = """
+SELECT
+    transcript.stable_id          AS trans_id,
+    protein_feature.seq_start     AS domain_start,
+    protein_feature.seq_end       AS domain_end,
+    protein_feature.hit_name      AS hit_name,
+    protein_feature.hit_description AS domain_name
+FROM gene
+    JOIN transcript  USING (gene_id)
+    JOIN translation USING (transcript_id)
+    JOIN protein_feature USING (translation_id)
+WHERE gene.stable_id = %s
+  AND protein_feature.hit_description IS NOT NULL
+  AND protein_feature.hit_name REGEXP %s
+  AND gene.canonical_transcript_id = transcript.transcript_id
+"""
+
+
+async def fetch_protein_domains(
+    pool: aiomysql.Pool,
+    gene_id: str,
+    domains: list[str],
+) -> list[dict]:
+    """
+    Query protein_feature for the canonical transcript of *gene_id*, filtering
+    by the selected domain database prefixes.  Returns a list of dicts with an
+    extra ``domain_type`` key indicating the matched database name.
+    """
+    # Build combined REGEXP pattern, e.g. ^(PF|PTHR)
+    patterns = [DOMAIN_PREFIXES[d].lstrip("^") for d in domains if d in DOMAIN_PREFIXES]
+    combined = "^(" + "|".join(patterns) + ")"
+
+    rows = await _run_query(pool, _DOMAIN_SQL, (gene_id, combined))
+
+    # Inject domain_type by matching hit_name against individual prefix patterns
+    _compiled = {name: re.compile(pat) for name, pat in DOMAIN_PREFIXES.items()}
+    for row in rows:
+        row["domain_type"] = next(
+            (name for name, pat in _compiled.items() if pat.match(row["hit_name"])),
+            "Unknown",
+        )
+
+    return rows

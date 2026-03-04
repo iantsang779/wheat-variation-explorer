@@ -27,9 +27,13 @@ from pydantic import BaseModel, model_validator
 from database import (
     _CORE_DB_PREFIX,
     _VARIATION_DB_PREFIX,
+    DOMAIN_PREFIXES,
+    SUPPORTED_SPECIES,
     create_pool,
     discover_latest_db,
     fetch_and_join,
+    fetch_canonical_transcript_id,
+    fetch_protein_domains,
     validate_input,
 )
 
@@ -127,6 +131,33 @@ def _annotate_cache_store(token: str, data: dict) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Protein annotation cache
+# ---------------------------------------------------------------------------
+
+_prot_annotate_cache: OrderedDict[str, dict[str, Any]] = OrderedDict()
+
+
+def _prot_cache_store(token: str, data: dict) -> None:
+    if len(_prot_annotate_cache) >= _CACHE_MAX_ENTRIES:
+        _prot_annotate_cache.popitem(last=False)
+    _prot_annotate_cache[token] = {"data": data, "ts": time.time()}
+
+
+# ---------------------------------------------------------------------------
+# Per-species core pool manager
+# ---------------------------------------------------------------------------
+
+_species_core_pools: dict[str, Any] = {}
+
+
+async def _get_species_core_pool(species: str):
+    if species not in _species_core_pools:
+        db_name = await discover_latest_db(f"{species}_core_")
+        _species_core_pools[species] = await create_pool(db_name)
+    return _species_core_pools[species]
+
+
+# ---------------------------------------------------------------------------
 # Lifespan (startup / shutdown)
 # ---------------------------------------------------------------------------
 
@@ -151,11 +182,14 @@ async def lifespan(app: FastAPI):
     yield
     variation_pool.close()
     core_pool.close()
+    for pool in _species_core_pools.values():
+        pool.close()
     await _asyncio.gather(
         variation_pool.wait_closed(),
         core_pool.wait_closed(),
+        *(_p.wait_closed() for _p in _species_core_pools.values()),
     )
-    print("[shutdown] Both connection pools closed.")
+    print("[shutdown] All connection pools closed.")
 
 
 # ---------------------------------------------------------------------------
@@ -252,6 +286,28 @@ class AnnotateResponse(BaseModel):
     strand: int
     sequence: str
     transcripts: list[TranscriptAnnotation]
+
+
+class ProteinAnnotateRequest(BaseModel):
+    gene_id: str
+    species: str
+    domains: list[str]
+
+
+class DomainFeature(BaseModel):
+    domain_start: int
+    domain_end:   int
+    hit_name:     str
+    domain_name:  str
+    domain_type:  str
+
+
+class ProteinAnnotateResponse(BaseModel):
+    token:       str
+    gene_id:     str
+    species:     str
+    protein_seq: str
+    domains:     list[DomainFeature]
 
 
 # ---------------------------------------------------------------------------
@@ -591,3 +647,94 @@ async def annotate_gene(request: AnnotateRequest):
     _annotate_cache_store(token, result_data)
 
     return AnnotateResponse(**result_data)
+
+
+@app.post("/api/annotate_protein", response_model=ProteinAnnotateResponse)
+async def annotate_protein(request: ProteinAnnotateRequest):
+    # Validate gene_id
+    try:
+        gene_id = validate_input(request.gene_id.strip(), "gene_id")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail={"error": str(exc)})
+    if not gene_id:
+        raise HTTPException(status_code=400, detail={"error": "gene_id is required."})
+
+    # Validate species
+    species = request.species
+    if species not in SUPPORTED_SPECIES:
+        raise HTTPException(
+            status_code=400,
+            detail={"error": f"Unsupported species '{species}'. Supported: {list(SUPPORTED_SPECIES.keys())}"},
+        )
+
+    # Validate domains
+    if not request.domains:
+        raise HTTPException(status_code=400, detail={"error": "At least one domain type must be selected."})
+    unknown = [d for d in request.domains if d not in DOMAIN_PREFIXES]
+    if unknown:
+        raise HTTPException(
+            status_code=400,
+            detail={"error": f"Unknown domain type(s): {unknown}. Valid: {list(DOMAIN_PREFIXES.keys())}"},
+        )
+
+    # Step 1: resolve canonical transcript ID + domain features from DB concurrently
+    try:
+        pool = await _get_species_core_pool(species)
+        canonical_tx_id, domain_rows = await asyncio.gather(
+            fetch_canonical_transcript_id(pool, gene_id),
+            fetch_protein_domains(pool, gene_id, request.domains),
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail={"error": f"Database error: {exc}"})
+
+    if not canonical_tx_id:
+        raise HTTPException(
+            status_code=404,
+            detail={"error": f"Gene ID '{gene_id}' not found in the {SUPPORTED_SPECIES[species]} core database."},
+        )
+
+    # Step 2: fetch protein sequence for the canonical transcript from Ensembl
+    try:
+        async with httpx.AsyncClient(timeout=_ENSEMBL_TIMEOUT_SECS) as client:
+            seq_resp = await client.get(
+                f"{ENSEMBL_REST_BASE}/sequence/id/{canonical_tx_id}",
+                params={"type": "protein"},
+                headers={"Accept": "application/json"},
+            )
+    except httpx.TimeoutException:
+        raise HTTPException(status_code=504, detail={"error": "Ensembl REST API timed out. Please try again."})
+    except httpx.RequestError as exc:
+        raise HTTPException(status_code=502, detail={"error": f"Could not reach Ensembl REST API: {exc}"})
+
+    if seq_resp.status_code == 404:
+        raise HTTPException(status_code=404, detail={"error": f"Gene ID '{gene_id}' not found in Ensembl."})
+    if not seq_resp.is_success:
+        raise HTTPException(
+            status_code=502,
+            detail={"error": f"Ensembl sequence error {seq_resp.status_code}: {seq_resp.text[:300]}"},
+        )
+
+    protein_seq: str = seq_resp.json().get("seq", "")
+
+    domain_features = [
+        DomainFeature(
+            domain_start=row["domain_start"],
+            domain_end=row["domain_end"],
+            hit_name=row["hit_name"],
+            domain_name=row["domain_name"],
+            domain_type=row["domain_type"],
+        )
+        for row in domain_rows
+    ]
+
+    token = str(uuid.uuid4())
+    result_data = {
+        "token":       token,
+        "gene_id":     gene_id,
+        "species":     species,
+        "protein_seq": protein_seq,
+        "domains":     [d.model_dump() for d in domain_features],
+    }
+    _prot_cache_store(token, result_data)
+
+    return ProteinAnnotateResponse(**result_data)

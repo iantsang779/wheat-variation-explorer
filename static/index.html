@@ -217,6 +217,15 @@
     >
       Annotate Sequence
     </button>
+  <button
+    @click="activeTab = 'annotate_protein'"
+    :class="activeTab === 'annotate_protein'
+      ? 'border-b-2 border-accent text-slate-900 font-semibold'
+      : 'text-slate-500 hover:text-slate-700'"
+    class="px-4 py-2.5 text-sm transition-colors -mb-px focus:outline-none"
+  >
+    Annotate Protein
+  </button>
   </nav>
 
   <main class="max-w-7xl mx-auto px-6 py-8 space-y-6">
@@ -848,6 +857,201 @@
 
   </div><!-- end annotate tab -->
 
+  <!-- ── Annotate Protein Tab ──────────────────────────────── -->
+  <div x-show="activeTab === 'annotate_protein'" class="space-y-6">
+
+    <p class="text-slate-500 text-sm my-4">
+      Query protein domain annotations for a gene and explore an interactive
+      colour-coded visualisation of domain coverage across the protein sequence.
+    </p>
+
+    <!-- Input panel -->
+    <section class="bg-surface-1 border border-surface-2 rounded-xl p-6 fade-in">
+      <h2 class="text-sm font-semibold text-slate-600 uppercase tracking-widest mb-4">
+        Annotate Protein
+      </h2>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-2xl">
+        <!-- Gene ID -->
+        <div>
+          <label class="block text-xs font-medium text-slate-600 mb-1.5">
+            Gene ID
+            <span class="ml-1 text-slate-400">(e.g. TRAESCS3D02G273600)</span>
+          </label>
+          <input
+            type="text"
+            x-model="paGeneId"
+            placeholder="Ensembl gene ID…"
+            @keydown.enter="submitProtAnnotate()"
+            class="input-field w-full bg-surface-2 border border-slate-300 rounded-lg px-3 py-2.5
+                   text-sm text-slate-900 placeholder-slate-400 transition"
+          />
+        </div>
+
+        <!-- Species -->
+        <div>
+          <label class="block text-xs font-medium text-slate-600 mb-1.5">Species</label>
+          <select
+            x-model="paSpecies"
+            class="input-field w-full bg-surface-2 border border-slate-300 rounded-lg px-3 py-2.5
+                   text-sm text-slate-900 transition cursor-pointer"
+          >
+            <option value="">— select species —</option>
+            <option value="triticum_aestivum">Wheat (Triticum aestivum)</option>
+            <option value="oryza_sativa">Rice (Oryza sativa)</option>
+            <option value="zea_mays">Maize (Zea mays)</option>
+            <option value="hordeum_vulgare">Barley (Hordeum vulgare)</option>
+            <option value="arabidopsis_thaliana">Arabidopsis (Arabidopsis thaliana)</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Domain checkboxes -->
+      <div class="mt-4">
+        <label class="block text-xs font-medium text-slate-600 mb-2">Domain databases</label>
+        <div class="flex flex-wrap gap-3">
+          <template x-for="db in ['Pfam','Panther','Prosite','Prints','Superfamily']" :key="db">
+            <label class="flex items-center gap-1.5 text-sm text-slate-700 cursor-pointer select-none">
+              <input type="checkbox" :value="db" x-model="paDomains"
+                     class="rounded border-slate-300 text-accent focus:ring-accent" />
+              <span x-text="db"></span>
+            </label>
+          </template>
+        </div>
+      </div>
+
+      <div class="mt-4 flex items-center gap-3">
+        <button
+          @click="submitProtAnnotate()"
+          :disabled="paLoading"
+          class="btn-primary px-6 py-2.5 rounded-lg text-sm font-semibold text-white
+                 focus:outline-none focus:ring-2 focus:ring-accent"
+        >
+          <span x-show="!paLoading">Annotate</span>
+          <span x-show="paLoading" class="flex items-center gap-2">
+            <svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+              <path class="opacity-75" fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+            </svg>
+            Annotating…
+          </span>
+        </button>
+
+        <button
+          x-show="paProteinSeq || paError"
+          @click="resetProtAnnotState()"
+          class="btn-outline px-4 py-2.5 rounded-lg text-sm text-slate-600
+                 focus:outline-none focus:ring-2 focus:ring-accent"
+        >
+          Clear
+        </button>
+      </div>
+    </section>
+
+    <!-- Error banner -->
+    <div
+      x-show="paError"
+      x-transition:enter="transition ease-out duration-200"
+      x-transition:enter-start="opacity-0 -translate-y-1"
+      x-transition:enter-end="opacity-100 translate-y-0"
+      class="bg-red-50 border border-red-200 rounded-xl px-5 py-4 flex items-start gap-3"
+    >
+      <svg class="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M12 9v3m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+      </svg>
+      <p class="text-sm text-red-700" x-text="paError"></p>
+    </div>
+
+    <!-- Loading skeleton -->
+    <div x-show="paLoading" class="space-y-2 fade-in">
+      <template x-for="i in 5" :key="i">
+        <div class="skeleton-row"></div>
+      </template>
+    </div>
+
+    <!-- Results panel -->
+    <section
+      x-show="!paLoading && paProteinSeq"
+      x-transition:enter="transition ease-out duration-300"
+      x-transition:enter-start="opacity-0 translate-y-4"
+      x-transition:enter-end="opacity-100 translate-y-0"
+      class="bg-surface-1 border border-surface-2 rounded-xl overflow-hidden"
+    >
+      <!-- Gene/species metadata bar -->
+      <div class="px-5 py-4 border-b border-surface-2 flex flex-wrap items-center gap-4">
+        <div>
+          <span class="text-xs text-slate-400 uppercase tracking-wider">Gene</span>
+          <p class="text-sm font-semibold text-slate-900 mt-0.5" x-text="paGeneId_result"></p>
+        </div>
+        <div>
+          <span class="text-xs text-slate-400 uppercase tracking-wider">Species</span>
+          <p class="text-sm text-slate-700 mt-0.5" x-text="paSpecies_result.replaceAll('_', ' ')"></p>
+        </div>
+        <div>
+          <span class="text-xs text-slate-400 uppercase tracking-wider">Protein length</span>
+          <p class="text-sm font-mono text-slate-700 mt-0.5" x-text="paProteinSeq.length.toLocaleString() + ' aa'"></p>
+        </div>
+        <div>
+          <span class="text-xs text-slate-400 uppercase tracking-wider">Domain hits</span>
+          <p class="text-sm font-mono text-slate-700 mt-0.5" x-text="paDomainFeatures.length.toLocaleString()"></p>
+        </div>
+      </div>
+
+      <!-- Legend -->
+      <div class="px-5 py-2.5 border-b border-surface-2 flex flex-wrap items-center gap-4 text-xs text-slate-500">
+        <span class="font-medium text-slate-400 uppercase tracking-wider text-[10px]">Legend</span>
+        <span class="flex items-center gap-1.5">
+          <span class="inline-block w-3.5 h-3.5 rounded-sm bg-violet-200"></span>Pfam
+        </span>
+        <span class="flex items-center gap-1.5">
+          <span class="inline-block w-3.5 h-3.5 rounded-sm bg-amber-200"></span>Panther
+        </span>
+        <span class="flex items-center gap-1.5">
+          <span class="inline-block w-3.5 h-3.5 rounded-sm bg-cyan-200"></span>Prosite
+        </span>
+        <span class="flex items-center gap-1.5">
+          <span class="inline-block w-3.5 h-3.5 rounded-sm bg-rose-200"></span>Prints
+        </span>
+        <span class="flex items-center gap-1.5">
+          <span class="inline-block w-3.5 h-3.5 rounded-sm bg-emerald-200"></span>Superfamily
+        </span>
+        <span class="flex items-center gap-1.5">
+          <span class="inline-block w-3.5 h-3.5 rounded-sm bg-gray-100 border border-slate-200"></span>No domain
+        </span>
+      </div>
+
+      <!-- Protein sequence viewer -->
+      <div class="p-4">
+        <div
+          class="font-mono text-xs leading-relaxed break-all bg-surface-2 rounded-lg p-4
+                 max-h-[60vh] overflow-auto"
+          style="word-break: break-all;"
+        >
+          <template x-for="(iv, idx) in paIntervals" :key="idx">
+            <span
+              :class="{
+                'bg-violet-200 text-gray-800':  iv.topDomain && iv.topDomain.domain_type === 'Pfam',
+                'bg-amber-200  text-gray-800':  iv.topDomain && iv.topDomain.domain_type === 'Panther',
+                'bg-cyan-200   text-gray-800':  iv.topDomain && iv.topDomain.domain_type === 'Prosite',
+                'bg-rose-200   text-gray-800':  iv.topDomain && iv.topDomain.domain_type === 'Prints',
+                'bg-emerald-200 text-gray-800': iv.topDomain && iv.topDomain.domain_type === 'Superfamily',
+                'bg-gray-100   text-gray-500':  !iv.topDomain,
+              }"
+              class="cursor-default rounded-[2px]"
+              @mouseenter="paTooltip = {visible: true, iv: iv, x: $event.clientX + 14, y: $event.clientY + 14}"
+              @mousemove="paTooltip.x = $event.clientX + 14; paTooltip.y = $event.clientY + 14"
+              @mouseleave="paTooltip.visible = false"
+              x-text="iv.seq"
+            ></span>
+          </template>
+        </div>
+      </div>
+    </section>
+
+  </div><!-- end annotate_protein tab -->
+
   <!-- Floating tooltip (rendered outside main panel to avoid clipping) -->
   <div
     x-show="annTooltip.visible"
@@ -863,6 +1067,35 @@
         </p>
         <p class="text-slate-500 text-[10px]"
            x-text="((annTooltip.seg.genomic_end - annTooltip.seg.genomic_start + 1) || 0).toLocaleString() + ' bp'"></p>
+      </div>
+    </template>
+  </div>
+
+  <!-- Floating protein tooltip -->
+  <div
+    x-show="paTooltip.visible"
+    :style="'position:fixed;left:' + paTooltip.x + 'px;top:' + paTooltip.y + 'px;z-index:9999;pointer-events:none'"
+    class="bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-700 shadow-xl max-w-xs"
+  >
+    <template x-if="paTooltip.iv">
+      <div>
+        <template x-if="paTooltip.iv.topDomain">
+          <div>
+            <p class="font-semibold text-slate-900" x-text="paTooltip.iv.topDomain.domain_type + ': ' + paTooltip.iv.topDomain.hit_name"></p>
+            <p class="text-slate-600 mt-0.5" x-text="paTooltip.iv.topDomain.domain_name"></p>
+            <p class="text-slate-400 text-[10px] mt-0.5 font-mono"
+               x-text="'aa ' + paTooltip.iv.topDomain.domain_start + '–' + paTooltip.iv.topDomain.domain_end"></p>
+            <template x-if="paTooltip.iv.allDomains.length > 1">
+              <p class="text-slate-400 text-[10px] mt-1"
+                 x-text="'+ ' + (paTooltip.iv.allDomains.length - 1) + ' more overlapping domain' + (paTooltip.iv.allDomains.length > 2 ? 's' : '')"></p>
+            </template>
+          </div>
+        </template>
+        <template x-if="!paTooltip.iv.topDomain">
+          <p class="text-slate-400">No domain annotation</p>
+        </template>
+        <p class="text-slate-400 text-[10px] mt-1 font-mono"
+           x-text="'pos ' + (paTooltip.iv.start + 1) + '–' + paTooltip.iv.end + ' (' + paTooltip.iv.seq.length + ' aa)'"></p>
       </div>
     </template>
   </div>
@@ -920,6 +1153,19 @@
         annSelectedTranscript: '',
         annGeneInfo: {},
         annTooltip: {visible: false, seg: null, x: 0, y: 0},
+
+        // ── Annotate Protein tab — state ─────────────────────────
+        paGeneId:        '',
+        paSpecies:       '',
+        paDomains:       [],
+        paLoading:       false,
+        paError:         '',
+        paGeneId_result: '',
+        paSpecies_result:'',
+        paProteinSeq:    '',
+        paDomainFeatures:[],
+        paToken:         '',
+        paTooltip:       {visible: false, iv: null, x: 0, y: 0},
 
         // ── Sequence tab — form inputs ───────────────────────────
         seqGeneIdsRaw: '',
@@ -1233,6 +1479,109 @@
           this.annSelectedTranscript = '';
           this.annGeneInfo           = {};
           this.annTooltip            = {visible: false, seg: null, x: 0, y: 0};
+        },
+
+        // ── Annotate Protein methods ──────────────────────────────
+        async submitProtAnnotate() {
+          this.paError          = '';
+          this.paProteinSeq     = '';
+          this.paDomainFeatures = [];
+          this.paToken          = '';
+          this.paGeneId_result  = '';
+          this.paSpecies_result = '';
+          this.paTooltip        = {visible: false, iv: null, x: 0, y: 0};
+
+          if (!this.paGeneId.trim()) {
+            this.paError = 'Please enter a gene ID.';
+            return;
+          }
+          if (!this.paSpecies) {
+            this.paError = 'Please select a species.';
+            return;
+          }
+          if (this.paDomains.length === 0) {
+            this.paError = 'Please select at least one domain type.';
+            return;
+          }
+
+          this.paLoading = true;
+          try {
+            const res = await fetch('/api/annotate_protein', {
+              method: 'POST',
+              headers: {'Content-Type': 'application/json'},
+              body: JSON.stringify({
+                gene_id: this.paGeneId.trim(),
+                species: this.paSpecies,
+                domains: this.paDomains,
+              }),
+            });
+            const data = await res.json();
+            if (!res.ok) {
+              this.paError = data.detail?.error ?? data.error ?? 'An unexpected error occurred.';
+              return;
+            }
+            this.paToken          = data.token;
+            this.paProteinSeq     = data.protein_seq;
+            this.paDomainFeatures = data.domains;
+            this.paGeneId_result  = data.gene_id;
+            this.paSpecies_result = data.species;
+          } catch (err) {
+            this.paError = 'Network error — could not reach the server. Please try again.';
+          } finally {
+            this.paLoading = false;
+          }
+        },
+
+        resetProtAnnotState() {
+          this.paGeneId         = '';
+          this.paSpecies        = '';
+          this.paDomains        = [];
+          this.paLoading        = false;
+          this.paError          = '';
+          this.paGeneId_result  = '';
+          this.paSpecies_result = '';
+          this.paProteinSeq     = '';
+          this.paDomainFeatures = [];
+          this.paToken          = '';
+          this.paTooltip        = {visible: false, iv: null, x: 0, y: 0};
+        },
+
+        get paIntervals() {
+          if (!this.paProteinSeq) return [];
+          const seq    = this.paProteinSeq;
+          const seqLen = seq.length;
+          const doms   = this.paDomainFeatures;
+
+          // Collect breakpoints (convert 1-indexed domain coords to 0-indexed)
+          const bpSet = new Set([0, seqLen]);
+          for (const d of doms) {
+            bpSet.add(d.domain_start - 1);
+            bpSet.add(d.domain_end);
+          }
+          const bps = Array.from(bpSet).sort((a, b) => a - b);
+
+          const PRIORITY = ['Pfam', 'Panther', 'Prosite', 'Prints', 'Superfamily'];
+
+          const intervals = [];
+          for (let i = 0; i < bps.length - 1; i++) {
+            const a = bps[i], b = bps[i + 1];
+            if (a >= b) continue;
+            // Find all domains covering [a, b) (1-indexed: domain_start-1 <= a AND domain_end >= b)
+            const covering = doms.filter(d => (d.domain_start - 1) <= a && d.domain_end >= b);
+            covering.sort((x, y) => {
+              const px = PRIORITY.indexOf(x.domain_type);
+              const py = PRIORITY.indexOf(y.domain_type);
+              return (px === -1 ? 999 : px) - (py === -1 ? 999 : py);
+            });
+            intervals.push({
+              start:      a,
+              end:        b,
+              seq:        seq.slice(a, b),
+              topDomain:  covering[0] ?? null,
+              allDomains: covering,
+            });
+          }
+          return intervals;
         },
       };
     }

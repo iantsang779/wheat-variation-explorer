@@ -79,6 +79,23 @@ Endpoint: `POST /api/annotate` — accepts `{ gene_id: string }` (validated via 
 - The genomic sequence is rendered as colour-coded spans: odd exons (blue), even exons (sky), introns/flanking (grey).
 - Hovering a span shows a tooltip with segment type, exon/intron number, and length.
 
+### Annotate Protein tab
+
+Endpoint: `POST /api/annotate_protein` — accepts `{ gene_id, species, domains[] }`.
+
+**Backend flow:**
+1. Validate `gene_id` via `validate_input()`; reject unknown `species` (see `SUPPORTED_SPECIES` in `database.py`) or empty `domains`.
+2. `_get_species_core_pool(species)` lazily creates and caches a connection pool for the requested species core DB (pattern `{species}_core_*`). Pools are stored in `_species_core_pools` and closed on shutdown.
+3. Two concurrent DB calls: `fetch_canonical_transcript_id()` and `fetch_protein_domains()` — both query the species core DB.
+4. The canonical transcript ID is used to call `GET /sequence/id/{transcript_id}?type=protein` on the Ensembl REST API (using the transcript ID avoids Ensembl's "multiple sequences" error when querying by gene ID).
+5. `fetch_protein_domains()` builds a combined REGEXP from `DOMAIN_PREFIXES` (e.g. `^(PF|PTHR)`) and queries `gene → transcript → translation → protein_feature`, filtering to the canonical transcript only.
+6. Result is cached in `_prot_annotate_cache` and returned as `ProteinAnnotateResponse`.
+
+**Frontend behaviour:**
+- Users enter a gene ID, select a species, and tick one or more domain databases (Pfam, Panther, Prosite, Prints, Superfamily).
+- Client-side `get paIntervals` decomposes the protein sequence at domain boundary breakpoints, priority-sorts overlapping domains (Pfam > Panther > Prosite > Prints > Superfamily), and renders colour-coded `<span>` elements.
+- Hovering shows a tooltip with the top domain's type, hit name, description, positions, and a count of additional overlapping domains.
+
 ### Input validation
 
 All user inputs pass through `validate_input()` in `database.py` before query construction: max 100 chars, regex `^[\w.\-]+$`. SQL parameters are always passed via aiomysql parameterisation (never interpolated).
