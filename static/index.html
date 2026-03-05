@@ -158,7 +158,7 @@
   ═══════════════════════════════════════════════════════════ -->
   <header class="border-b border-surface-2 bg-surface-1 fade-in">
     <div class="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
-      <div class="flex items-center gap-3">
+      <button @click="activeTab = 'home'" class="flex items-center gap-3 text-left hover:opacity-80 transition-opacity focus:outline-none">
         <!-- wheat icon -->
         <svg class="w-7 h-7 text-accent-light" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"
@@ -167,13 +167,13 @@
         </svg>
         <div>
           <h1 class="text-lg font-semibold text-slate-900 leading-tight">
-            PlantBox- Open Source Tools for Plant Bioinformatics
+            PlantBox — Open Source Tools for Plant Bioinformatics
           </h1>
           <p class="text-xs text-slate-500 mt-0.5">
             Powered by EMBL-EBI Data
           </p>
         </div>
-      </div>
+      </button>
 
       <!-- DB badge -->
       <div x-show="dbName" class="hidden sm:flex items-center gap-2 text-xs text-slate-500">
@@ -186,61 +186,165 @@
   <!-- ═══════════════════════════════════════════════════════════
        MAIN CONTENT
   ═══════════════════════════════════════════════════════════ -->
-  <!-- ═══════════════════════════════════════════════════════════
-       TAB NAVIGATION
-  ═══════════════════════════════════════════════════════════ -->
-  <nav class="max-w-7xl mx-auto px-6 pt-6 flex gap-1 border-b border-surface-2">
-    <button
-      @click="activeTab = 'variants'"
-      :class="activeTab === 'variants'
-        ? 'border-b-2 border-accent text-slate-900 font-semibold'
-        : 'text-slate-500 hover:text-slate-700'"
-      class="px-4 py-2.5 text-sm transition-colors -mb-px focus:outline-none"
-    >
-      Variant Explorer
-    </button>
-    <button
-      @click="activeTab = 'sequences'"
-      :class="activeTab === 'sequences'
-        ? 'border-b-2 border-accent text-slate-900 font-semibold'
-        : 'text-slate-500 hover:text-slate-700'"
-      class="px-4 py-2.5 text-sm transition-colors -mb-px focus:outline-none"
-    >
-      Sequence Retrieval
-    </button>
-    <button
-      @click="activeTab = 'annotate'"
-      :class="activeTab === 'annotate'
-        ? 'border-b-2 border-accent text-slate-900 font-semibold'
-        : 'text-slate-500 hover:text-slate-700'"
-      class="px-4 py-2.5 text-sm transition-colors -mb-px focus:outline-none"
-    >
-      Annotate DNA Sequence
-    </button>
-  <button
-    @click="activeTab = 'annotate_protein'"
-    :class="activeTab === 'annotate_protein'
-      ? 'border-b-2 border-accent text-slate-900 font-semibold'
-      : 'text-slate-500 hover:text-slate-700'"
-    class="px-4 py-2.5 text-sm transition-colors -mb-px focus:outline-none"
-  >
-    Annotate Amino Acid Sequence
-  </button>
-  <button
-    @click="activeTab = 'homology'"
-    :class="activeTab === 'homology'
-      ? 'border-b-2 border-accent text-slate-900 font-semibold'
-      : 'text-slate-500 hover:text-slate-700'"
-    class="px-4 py-2.5 text-sm transition-colors -mb-px focus:outline-none"
-  >
-    Pull Homologous Sequences
-  </button>
-  </nav>
-
   <main class="max-w-7xl mx-auto px-6 py-8">
+
+  <!-- ── Landing Page ──────────────────────────────────────── -->
+  <div x-show="activeTab === 'home'" class="space-y-10 slide-up">
+
+    <!-- Hero -->
+    <div class="text-center py-10">
+      <div class="flex justify-center mb-4">
+        <svg class="w-14 h-14 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6"
+                d="M12 3v18M9 6c0 0-3 1-3 4s3 3 3 3M15 6c0 0 3 1 3 4s-3 3-3 3
+                   M9 13c0 0-3 1-3 4s3 3 3 3M15 13c0 0 3 1 3 4s-3 3-3 3" />
+        </svg>
+      </div>
+      <h2 class="text-4xl font-bold text-slate-900 mb-2">PlantBox</h2>
+      <p class="text-lg text-accent font-medium mb-5">Open-source tools for plant bioinformatics</p>
+      <p class="max-w-2xl mx-auto text-slate-600 text-sm leading-relaxed">
+        PlantBox is a lightweight interface for exploring plant genomic data hosted on Ensembl (EMBL-EBI).
+        It queries the most recent EMBL-EBI SQL databases and REST APIs directly, offering an efficient alternative to manual queries through the Ensembl browser.
+        The framework is adaptable — new tools can be added on request.
+        Things may occasionally change or break as upstream data sources evolve; if something doesn't work, please get in touch.
+      </p>
+    </div>
+
+    <!-- Tool Cards -->
+    <div>
+      <h3 class="text-lg font-semibold text-slate-800 mb-4">Tools</h3>
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+
+        <!-- Variant Explorer -->
+        <div class="bg-surface-1 border border-surface-2 rounded-xl p-5 flex flex-col gap-3 shadow-sm hover:shadow-md transition-shadow">
+          <div>
+            <span class="text-xs font-semibold text-accent uppercase tracking-wide">Variant Explorer</span>
+            <p class="text-sm text-slate-700 mt-1.5">
+              Explore all genes associated with wheat variants (Cadenza and Kronos). Supports wildcard search — for example, <span class="font-mono text-slate-900">TraesCS3A02</span> retrieves all genes on Chr 3A.
+              KASP markers are returned where available, generated by the BBSRC Nottingham Wheat Research Centre.
+            </p>
+          </div>
+          <div class="text-xs text-slate-500 space-y-1 border-t border-surface-2 pt-3">
+            <p><span class="font-semibold text-slate-600">How it works:</span> Queries the variation and core MySQL databases concurrently, then left-joins results on variant name.</p>
+            <p><span class="font-semibold text-slate-600">Note:</span> Results capped at 300 rows for speed.</p>
+          </div>
+          <button @click="activeTab = 'variants'" class="btn-primary mt-auto text-white text-sm font-medium rounded-lg px-4 py-2 self-start">
+            Open tool &rarr;
+          </button>
+        </div>
+
+        <!-- Sequence Retrieval -->
+        <div class="bg-surface-1 border border-surface-2 rounded-xl p-5 flex flex-col gap-3 shadow-sm hover:shadow-md transition-shadow">
+          <div>
+            <span class="text-xs font-semibold text-accent uppercase tracking-wide">Sequence Retrieval</span>
+            <p class="text-sm text-slate-700 mt-1.5">
+              Rapid retrieval of CDS, genomic, protein, and cDNA sequences for up to 50 gene IDs at a time.
+              Results are returned as FASTA and can be downloaded directly.
+            </p>
+          </div>
+          <div class="text-xs text-slate-500 space-y-1 border-t border-surface-2 pt-3">
+            <p><span class="font-semibold text-slate-600">How it works:</span> Calls the Ensembl Plants REST API for each ID. All sequence versions are returned.</p>
+            <p><span class="font-semibold text-slate-600">Note:</span> Up to 50 gene IDs per query.</p>
+          </div>
+          <button @click="activeTab = 'sequences'" class="btn-primary mt-auto text-white text-sm font-medium rounded-lg px-4 py-2 self-start">
+            Open tool &rarr;
+          </button>
+        </div>
+
+        <!-- Annotate DNA Sequence -->
+        <div class="bg-surface-1 border border-surface-2 rounded-xl p-5 flex flex-col gap-3 shadow-sm hover:shadow-md transition-shadow">
+          <div>
+            <span class="text-xs font-semibold text-accent uppercase tracking-wide">Annotate DNA Sequence</span>
+            <p class="text-sm text-slate-700 mt-1.5">
+              Annotates intron and exon boundaries of a given gene across canonical and non-canonical transcripts.
+              Renders an interactive colour-coded sequence view with per-segment tooltips.
+            </p>
+          </div>
+          <div class="text-xs text-slate-500 space-y-1 border-t border-surface-2 pt-3">
+            <p><span class="font-semibold text-slate-600">How it works:</span> Two concurrent REST calls fetch gene metadata and the full genomic sequence; exon coordinates are mapped onto the sequence to produce segments.</p>
+            <p><span class="font-semibold text-slate-600">Note:</span> One gene ID at a time; supports any Ensembl Plants gene.</p>
+          </div>
+          <button @click="activeTab = 'annotate'" class="btn-primary mt-auto text-white text-sm font-medium rounded-lg px-4 py-2 self-start">
+            Open tool &rarr;
+          </button>
+        </div>
+
+        <!-- Annotate Amino Acid Sequence -->
+        <div class="bg-surface-1 border border-surface-2 rounded-xl p-5 flex flex-col gap-3 shadow-sm hover:shadow-md transition-shadow">
+          <div>
+            <span class="text-xs font-semibold text-accent uppercase tracking-wide">Annotate Amino Acid Sequence</span>
+            <p class="text-sm text-slate-700 mt-1.5">
+              Annotates protein residues with domain databases (Pfam, Panther, Prosite, Prints, Superfamily).
+              Provides interactive colour-coded domain coverage with overlap resolution.
+            </p>
+          </div>
+          <div class="text-xs text-slate-500 space-y-1 border-t border-surface-2 pt-3">
+            <p><span class="font-semibold text-slate-600">How it works:</span> Queries the species core database for protein features and the canonical transcript, then fetches the protein sequence from the REST API.</p>
+            <p><span class="font-semibold text-slate-600">Note:</span> One gene ID at a time; select species and domain databases before querying.</p>
+          </div>
+          <button @click="activeTab = 'annotate_protein'" class="btn-primary mt-auto text-white text-sm font-medium rounded-lg px-4 py-2 self-start">
+            Open tool &rarr;
+          </button>
+        </div>
+
+        <!-- Pull Homologous Sequences -->
+        <div class="bg-surface-1 border border-surface-2 rounded-xl p-5 flex flex-col gap-3 shadow-sm hover:shadow-md transition-shadow">
+          <div>
+            <span class="text-xs font-semibold text-accent uppercase tracking-wide">Pull Homologous Sequences</span>
+            <p class="text-sm text-slate-700 mt-1.5">
+              Returns all orthologues, homoeologues, or paralogues of a gene, including sequences not shown in the Ensembl browser.
+              An interactive pairwise alignment viewer reconstructs alignments from CIGAR strings client-side.
+            </p>
+          </div>
+          <div class="text-xs text-slate-500 space-y-1 border-t border-surface-2 pt-3">
+            <p><span class="font-semibold text-slate-600">How it works:</span> Queries the Ensembl Compara Plants database; alignments are reconstructed from CIGAR strings in the browser — no alignment algorithm is executed server-side.</p>
+            <p><span class="font-semibold text-slate-600">Note:</span> One gene ID at a time; CSV/Excel downloads include full sequences and CIGAR lines.</p>
+          </div>
+          <button @click="activeTab = 'homology'" class="btn-primary mt-auto text-white text-sm font-medium rounded-lg px-4 py-2 self-start">
+            Open tool &rarr;
+          </button>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Caveats -->
+    <div class="bg-surface-2 border border-surface-2 rounded-xl px-5 py-4 text-sm text-slate-600">
+      <p class="font-semibold text-slate-700 mb-1">A few things to know</p>
+      <ul class="list-disc list-inside space-y-1 text-xs">
+        <li>PlantBox queries live EMBL-EBI SQL and REST endpoints — both are subject to change; PlantBox always fetches the most recent dataset available.</li>
+        <li>This is an adaptable framework; new tools can be added upon request.</li>
+        <li>If something breaks or returns unexpected results, please get in touch.</li>
+      </ul>
+    </div>
+
+    <!-- Contact & Suggestions -->
+    <div class="bg-surface-1 border border-surface-2 rounded-xl p-6">
+      <h3 class="text-base font-semibold text-slate-800 mb-1">Contact &amp; Suggestions</h3>
+      <p class="text-sm text-slate-500 mb-4">Have a question, suggestion, or tool request? Write a message below and click Contact to open an email.</p>
+      <textarea
+        x-model="landingSuggestion"
+        rows="4"
+        placeholder="Type your message here..."
+        class="input-field w-full rounded-lg border border-surface-2 bg-surface-0 px-3 py-2 text-sm text-slate-800 placeholder-slate-400 resize-none mb-3"
+      ></textarea>
+      <button
+        @click="window.location.href = 'mailto:iantsang35@gmail.com?subject=PlantBox%20Suggestion&body=' + encodeURIComponent(landingSuggestion)"
+        class="btn-primary text-white text-sm font-medium rounded-lg px-5 py-2"
+      >
+        Contact
+      </button>
+    </div>
+
+  </div>
 
   <!-- ── Variant Explorer Tab ───────────────────────────────── -->
   <div x-show="activeTab === 'variants'" class="space-y-6">
+
+    <button @click="activeTab = 'home'" class="flex items-center gap-1.5 text-sm text-slate-500 hover:text-accent transition-colors focus:outline-none">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+      Back to home
+    </button>
 
     <p class="text-slate-500 text-sm mb-4 text-center">
       Search for genes associated with a specific wheat variant or a range of variants (e.g. <span class="text-slate-700 font-mono">Cadenza1714</span> for an exact match, or <span class="text-slate-700 font-mono">Cadenza17</span> to retrieve all variants sharing that prefix).<br>Filter results by consequence type to narrow down functionally relevant mutations.
@@ -548,6 +652,11 @@
   <!-- ── Sequence Retrieval Tab ────────────────────────────── -->
   <div x-show="activeTab === 'sequences'" class="space-y-6">
 
+    <button @click="activeTab = 'home'" class="flex items-center gap-1.5 text-sm text-slate-500 hover:text-accent transition-colors focus:outline-none">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+      Back to home
+    </button>
+
     <p class="text-slate-500 text-sm mb-4 text-center">
       Blazingly fast, near real-time retrieval of CDS, genomic, protein, and cDNA sequences for any wheat gene or transcript.<br>Results are returned directly from the EBI Ensembl REST API with minimal latency.
     </p>
@@ -691,6 +800,11 @@
 
   <!-- ── Annotate DNA Sequence Tab ──────────────────────────── -->
   <div x-show="activeTab === 'annotate'" class="space-y-6">
+
+    <button @click="activeTab = 'home'" class="flex items-center gap-1.5 text-sm text-slate-500 hover:text-accent transition-colors focus:outline-none">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+      Back to home
+    </button>
 
     <p class="text-slate-500 text-sm mb-4 text-center">
       Pull exon and intron annotations for a given DNA sequence based on your query, and explore an interactive visualisation of the gene's exon–intron architecture.
@@ -868,6 +982,11 @@
 
   <!-- ── Annotate Amino Acid Sequence Tab ─────────────────── -->
   <div x-show="activeTab === 'annotate_protein'" class="space-y-6">
+
+    <button @click="activeTab = 'home'" class="flex items-center gap-1.5 text-sm text-slate-500 hover:text-accent transition-colors focus:outline-none">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+      Back to home
+    </button>
 
     <p class="text-slate-500 text-sm mb-4 text-center">
       Query protein domain annotations for a gene and explore an interactive
@@ -1063,6 +1182,11 @@
 
   <!-- ── Pull Homologous Sequences Tab ──────────────────────── -->
   <div x-show="activeTab === 'homology'" class="space-y-6">
+
+    <button @click="activeTab = 'home'" class="flex items-center gap-1.5 text-sm text-slate-500 hover:text-accent transition-colors focus:outline-none">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+      Back to home
+    </button>
 
     <p class="text-slate-500 text-sm mb-4 text-center">
       Query the Ensembl Compara Plants database for orthologues, homoeologues, or paralogues of a plant gene.<br>Click a result row to view the pairwise alignment reconstructed from CIGAR strings.
@@ -1373,7 +1497,8 @@
     function dashboardApp() {
       return {
         // ── Tab state ───────────────────────────────────────────
-        activeTab: 'variants',
+        activeTab: 'home',
+        landingSuggestion: '',
 
         // ── Annotate tab — state ─────────────────────────────────
         annGeneId: '',
