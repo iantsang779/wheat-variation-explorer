@@ -237,12 +237,12 @@
   </button>
   </nav>
 
-  <main class="max-w-7xl mx-auto px-6 py-8 space-y-6">
+  <main class="max-w-7xl mx-auto px-6 py-8">
 
   <!-- ── Variant Explorer Tab ───────────────────────────────── -->
   <div x-show="activeTab === 'variants'" class="space-y-6">
 
-    <p class="text-slate-500 text-sm my-4 text-center">
+    <p class="text-slate-500 text-sm mb-4 text-center">
       Search for genes associated with a specific wheat variant or a range of variants (e.g. <span class="text-slate-700 font-mono">Cadenza1714</span> for an exact match, or <span class="text-slate-700 font-mono">Cadenza17</span> to retrieve all variants sharing that prefix).<br>Filter results by consequence type to narrow down functionally relevant mutations.
     </p>
 
@@ -548,7 +548,7 @@
   <!-- ── Sequence Retrieval Tab ────────────────────────────── -->
   <div x-show="activeTab === 'sequences'" class="space-y-6">
 
-    <p class="text-slate-500 text-sm my-4 text-center">
+    <p class="text-slate-500 text-sm mb-4 text-center">
       Blazingly fast, near real-time retrieval of CDS, genomic, protein, and cDNA sequences for any wheat gene or transcript.<br>Results are returned directly from the EBI Ensembl REST API with minimal latency.
     </p>
 
@@ -692,7 +692,7 @@
   <!-- ── Annotate DNA Sequence Tab ──────────────────────────── -->
   <div x-show="activeTab === 'annotate'" class="space-y-6">
 
-    <p class="text-slate-500 text-sm my-4 text-center">
+    <p class="text-slate-500 text-sm mb-4 text-center">
       Pull exon and intron annotations for a given DNA sequence based on your query, and explore an interactive visualisation of the gene's exon–intron architecture.
     </p>
 
@@ -869,7 +869,7 @@
   <!-- ── Annotate Amino Acid Sequence Tab ─────────────────── -->
   <div x-show="activeTab === 'annotate_protein'" class="space-y-6">
 
-    <p class="text-slate-500 text-sm my-4 text-center">
+    <p class="text-slate-500 text-sm mb-4 text-center">
       Query protein domain annotations for a gene and explore an interactive
       colour-coded visualisation of domain coverage across the protein sequence.
     </p>
@@ -1064,7 +1064,7 @@
   <!-- ── Pull Homologous Sequences Tab ──────────────────────── -->
   <div x-show="activeTab === 'homology'" class="space-y-6">
 
-    <p class="text-slate-500 text-sm my-4 text-center">
+    <p class="text-slate-500 text-sm mb-4 text-center">
       Query the Ensembl Compara Plants database for orthologues, homoeologues, or paralogues of a plant gene.<br>Click a result row to view the pairwise alignment reconstructed from CIGAR strings.
     </p>
 
