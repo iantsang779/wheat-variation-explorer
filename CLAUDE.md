@@ -39,16 +39,17 @@ Then ask whether to push to `origin main`.
 
 PlantBox is a single-page FastAPI dashboard that queries the **EMBL-EBI public MySQL server** (`mysql-eg-publicsql.ebi.ac.uk:4157`, user `ensro`, no password) for plant genomic variant, KASP marker, and protein domain data across multiple species.
 
-### Two-database design
+### Three-database design
 
-At startup, the app discovers and connects to two separate databases on the EBI server:
+At startup, the app discovers and connects to three separate databases on the EBI server:
 
 | Pool | Database pattern | Used by |
 |---|---|---|
 | `variation_pool` | `triticum_aestivum_variation_*` | Variant/transcript queries |
 | `core_pool` | `triticum_aestivum_core_*` | KASP marker queries |
+| `compara_pool` | `ensembl_compara_plants_*` | Homology queries |
 
-Both pools are stored on `app.state` and passed explicitly into `fetch_and_join()`. Version selection picks the highest numeric suffix (e.g. `110_1 > 99_1`).
+All three pools are stored on `app.state`. Version selection picks the highest numeric suffix (e.g. `110_1 > 99_1`).
 
 ### Request flow
 
@@ -98,6 +99,28 @@ Endpoint: `POST /api/annotate_protein` — accepts `{ gene_id, species, domains[
 - Users enter a gene ID, select a species, and tick one or more domain databases (Pfam, Panther, Prosite, Prints, Superfamily).
 - Client-side `get paIntervals` decomposes the protein sequence at domain boundary breakpoints, priority-sorts overlapping domains (Pfam > Panther > Prosite > Prints > Superfamily), and renders colour-coded `<span>` elements.
 - Hovering shows a tooltip with the top domain's type, hit name, description, positions, and a count of additional overlapping domains.
+
+### Pull Homologous Sequences tab
+
+Endpoint: `POST /api/homology` — accepts `{ gene_id: string, homology_type: string }`.
+
+**Valid `homology_type` values** (defined in `HOMOLOGY_TYPES` in `database.py`):
+- `"orthologues"` → `ortholog_one2one | ortholog_one2many | ortholog_many2many`
+- `"homoeologues"` → `homoeolog_one2one | homoeolog_one2many | homoeolog_many2many`
+- `"paralogues"` → `within_species_paralog | other_paralog | gene_split`
+
+**Backend flow:**
+1. Validate `gene_id` and `homology_type`; query `compara_pool` via `fetch_homologs()` in `database.py`.
+2. `fetch_homologs()` builds a parameterised `OR`-chain of `h.description = %s` clauses from `_HOMOLOGY_SQL` and queries `homology → homology_member → gene_member / genome_db / seq_member / sequence` (joined twice — once for query, once for homologue).
+3. Bytes in `query_sequence`, `homolog_sequence`, `query_cigar_line`, `homolog_cigar_line` are decoded UTF-8 if returned as `bytes` (latin1 charset edge case).
+4. All 11 columns (including sequences and CIGAR lines) are cached under a UUID token via `_cache_store`; `/api/download/csv` and `/api/download/excel` are reused unchanged.
+5. Response includes `display_columns` (7 cols, no sequences) and `all_columns` (11 cols).
+
+**Frontend behaviour:**
+- Users enter a gene ID and select a homology type from a dropdown, then click **Search**.
+- Results table shows 7 display columns; rows are clickable to populate the alignment viewer.
+- Alignment viewer reconstructs pairwise alignments client-side from CIGAR strings (`M` = consume residue, `D` = insert gap). Alignment is wrapped at 60 chars per line with `|` match markers between query (blue) and homologue (green).
+- CSV/Excel downloads include all 11 columns (sequences + CIGARs).
 
 ### Input validation
 

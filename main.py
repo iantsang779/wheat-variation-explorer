@@ -25,14 +25,17 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, model_validator
 
 from database import (
+    _COMPARA_DB_PREFIX,
     _CORE_DB_PREFIX,
     _VARIATION_DB_PREFIX,
     DOMAIN_PREFIXES,
+    HOMOLOGY_TYPES,
     SUPPORTED_SPECIES,
     create_pool,
     discover_latest_db,
     fetch_and_join,
     fetch_canonical_transcript_id,
+    fetch_homologs,
     fetch_protein_domains,
     validate_input,
 )
@@ -163,30 +166,37 @@ async def _get_species_core_pool(species: str):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Discover the latest variation + core DBs and create two connection pools."""
+    """Discover the latest variation + core + compara DBs and create three connection pools."""
     import asyncio as _asyncio
-    variation_db, core_db = await _asyncio.gather(
+    variation_db, core_db, compara_db = await _asyncio.gather(
         discover_latest_db(_VARIATION_DB_PREFIX),
         discover_latest_db(_CORE_DB_PREFIX),
+        discover_latest_db(_COMPARA_DB_PREFIX),
     )
-    variation_pool, core_pool = await _asyncio.gather(
+    variation_pool, core_pool, compara_pool = await _asyncio.gather(
         create_pool(variation_db),
         create_pool(core_db),
+        create_pool(compara_db),
     )
     app.state.variation_pool = variation_pool
     app.state.core_pool = core_pool
+    app.state.compara_pool = compara_pool
     app.state.variation_db_name = variation_db
     app.state.core_db_name = core_db
+    app.state.compara_db_name = compara_db
     print(f"[startup] variation DB : {variation_db}")
     print(f"[startup] core DB      : {core_db}")
+    print(f"[startup] compara DB   : {compara_db}")
     yield
     variation_pool.close()
     core_pool.close()
+    compara_pool.close()
     for pool in _species_core_pools.values():
         pool.close()
     await _asyncio.gather(
         variation_pool.wait_closed(),
         core_pool.wait_closed(),
+        compara_pool.wait_closed(),
         *(_p.wait_closed() for _p in _species_core_pools.values()),
     )
     print("[shutdown] All connection pools closed.")
@@ -308,6 +318,34 @@ class ProteinAnnotateResponse(BaseModel):
     species:     str
     protein_seq: str
     domains:     list[DomainFeature]
+
+
+class HomologyRequest(BaseModel):
+    gene_id:       str
+    homology_type: str  # "orthologues" | "homoeologues" | "paralogues"
+
+
+class HomologyResponse(BaseModel):
+    token:           str
+    display_columns: list[str]
+    all_columns:     list[str]
+    rows:            list[dict]
+    row_count:       int
+    db_name:         str
+
+
+_HOMO_DISPLAY_COLS = [
+    "query_gene_id", "query_species", "query_perc_id",
+    "homology_type",
+    "homolog_gene_id", "homolog_species", "homolog_perc_id",
+]
+_HOMO_ALL_COLS = [
+    "query_gene_id", "query_species", "query_sequence",
+    "query_perc_id", "query_cigar_line",
+    "homology_type",
+    "homolog_gene_id", "homolog_species",
+    "homolog_perc_id", "homolog_cigar_line", "homolog_sequence",
+]
 
 
 # ---------------------------------------------------------------------------
@@ -738,3 +776,47 @@ async def annotate_protein(request: ProteinAnnotateRequest):
     _prot_cache_store(token, result_data)
 
     return ProteinAnnotateResponse(**result_data)
+
+
+@app.post("/api/homology", response_model=HomologyResponse)
+async def fetch_homology(request: HomologyRequest):
+    try:
+        gene_id = validate_input(request.gene_id.strip(), "gene_id")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail={"error": str(exc)})
+    if not gene_id:
+        raise HTTPException(status_code=400, detail={"error": "gene_id is required."})
+    if request.homology_type not in HOMOLOGY_TYPES:
+        raise HTTPException(status_code=400, detail={"error": "Invalid homology_type."})
+
+    try:
+        rows = await fetch_homologs(app.state.compara_pool, gene_id, request.homology_type)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail={"error": str(exc)})
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail={"error": f"Database error: {exc}"})
+
+    if not rows:
+        raise HTTPException(
+            status_code=404,
+            detail={"error": f"No {request.homology_type} found for gene '{gene_id}'."},
+        )
+
+    # Decode bytes for TEXT/BLOB columns (latin1 charset edge case)
+    for row in rows:
+        for field in ("query_sequence", "homolog_sequence",
+                      "query_cigar_line", "homolog_cigar_line"):
+            if isinstance(row.get(field), (bytes, bytearray)):
+                row[field] = row[field].decode("utf-8", errors="replace")
+
+    token = str(uuid.uuid4())
+    _cache_store(token, rows, _HOMO_ALL_COLS)
+
+    return HomologyResponse(
+        token=token,
+        display_columns=_HOMO_DISPLAY_COLS,
+        all_columns=_HOMO_ALL_COLS,
+        rows=rows,
+        row_count=len(rows),
+        db_name=app.state.compara_db_name,
+    )

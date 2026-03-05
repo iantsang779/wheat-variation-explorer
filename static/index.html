@@ -226,6 +226,15 @@
   >
     Annotate Amino Acid Sequence
   </button>
+  <button
+    @click="activeTab = 'homology'"
+    :class="activeTab === 'homology'
+      ? 'border-b-2 border-accent text-slate-900 font-semibold'
+      : 'text-slate-500 hover:text-slate-700'"
+    class="px-4 py-2.5 text-sm transition-colors -mb-px focus:outline-none"
+  >
+    Pull Homologous Sequences
+  </button>
   </nav>
 
   <main class="max-w-7xl mx-auto px-6 py-8 space-y-6">
@@ -1052,6 +1061,202 @@
 
   </div><!-- end annotate_protein tab -->
 
+  <!-- ── Pull Homologous Sequences Tab ──────────────────────── -->
+  <div x-show="activeTab === 'homology'" class="space-y-6">
+
+    <p class="text-slate-500 text-sm my-4 text-center">
+      Query the Ensembl Compara Plants database for orthologues, homoeologues, or paralogues of a plant gene. Click a result row to view the pairwise alignment reconstructed from CIGAR strings.
+    </p>
+
+    <!-- Input section -->
+    <section class="bg-surface-1 border border-surface-2 rounded-xl p-6 fade-in">
+      <h2 class="text-sm font-semibold text-slate-600 uppercase tracking-widest mb-4">Search Parameters</h2>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+          <label class="block text-xs font-medium text-slate-600 mb-1.5">Gene ID</label>
+          <input
+            type="text"
+            x-model="homoGeneId"
+            @keydown.enter="submitHomology()"
+            placeholder="e.g. TRAESCS3D02G273600"
+            class="input-field w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white focus:ring-0"
+          />
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-slate-600 mb-1.5">Homology Type</label>
+          <select
+            x-model="homoHomologyType"
+            class="input-field seq-type-select w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white focus:ring-0"
+          >
+            <option value="" disabled>Select type…</option>
+            <option value="orthologues">Orthologues</option>
+            <option value="homoeologues">Homoeologues</option>
+            <option value="paralogues">Paralogues</option>
+          </select>
+        </div>
+      </div>
+      <div class="flex gap-3 mt-4">
+        <button
+          @click="submitHomology()"
+          :disabled="homoLoading"
+          class="btn-primary text-white px-5 py-2 rounded-lg text-sm font-medium"
+        >
+          <span x-show="!homoLoading">Search</span>
+          <span x-show="homoLoading">Searching…</span>
+        </button>
+        <button
+          @click="resetHomologyState()"
+          class="btn-outline px-4 py-2 rounded-lg text-sm text-slate-600"
+        >
+          Clear
+        </button>
+      </div>
+
+      <!-- Error banner -->
+      <div x-show="homoError" class="mt-4 bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700" x-text="homoError"></div>
+
+      <!-- Loading skeleton -->
+      <div x-show="homoLoading" class="mt-6 space-y-2">
+        <div class="skeleton-row"></div>
+        <div class="skeleton-row"></div>
+        <div class="skeleton-row"></div>
+      </div>
+    </section>
+
+    <!-- Results section -->
+    <template x-if="homoRows.length > 0">
+      <div class="space-y-4 slide-up">
+
+        <!-- Header bar -->
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-2">
+            <span class="badge bg-surface-2 text-slate-700" x-text="homoRowCount + ' result' + (homoRowCount !== 1 ? 's' : '')"></span>
+            <span class="text-xs text-slate-400 font-mono" x-text="homoDbName"></span>
+          </div>
+          <div class="flex gap-2">
+            <button @click="downloadHomoCSV()" class="btn-outline px-3 py-1.5 rounded-lg text-xs text-slate-600 flex items-center gap-1">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+              CSV
+            </button>
+            <button @click="downloadHomoExcel()" class="btn-outline px-3 py-1.5 rounded-lg text-xs text-slate-600 flex items-center gap-1">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+              Excel
+            </button>
+          </div>
+        </div>
+
+        <!-- Alignment viewer -->
+        <section class="bg-surface-1 border border-surface-2 rounded-xl overflow-hidden">
+          <button
+            @click="homoAlignOpen = !homoAlignOpen"
+            class="w-full flex items-center justify-between px-5 py-3 text-sm font-semibold text-slate-700 hover:bg-surface-2 transition-colors"
+          >
+            <span>Pairwise Alignment Viewer</span>
+            <svg class="w-4 h-4 transition-transform" :class="homoAlignOpen ? 'rotate-180' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+            </svg>
+          </button>
+          <div x-show="homoAlignOpen" class="px-5 pb-5">
+            <template x-if="!homoSelectedRow">
+              <p class="text-sm text-slate-400 italic mt-2">Click a row in the table below to view its pairwise alignment.</p>
+            </template>
+            <template x-if="homoSelectedRow">
+              <div>
+                <!-- Alignment header -->
+                <div class="grid grid-cols-2 gap-4 mb-3 mt-2 text-xs">
+                  <div class="bg-blue-50 border border-blue-100 rounded-lg px-3 py-2">
+                    <p class="font-semibold text-blue-800" x-text="homoSelectedRow.query_gene_id"></p>
+                    <p class="text-blue-600" x-text="homoSelectedRow.query_species"></p>
+                    <p class="text-blue-400 mt-0.5" x-text="'% id: ' + (homoSelectedRow.query_perc_id ?? '—')"></p>
+                  </div>
+                  <div class="bg-green-50 border border-green-100 rounded-lg px-3 py-2">
+                    <p class="font-semibold text-green-800" x-text="homoSelectedRow.homolog_gene_id"></p>
+                    <p class="text-green-600" x-text="homoSelectedRow.homolog_species"></p>
+                    <p class="text-green-400 mt-0.5" x-text="'% id: ' + (homoSelectedRow.homolog_perc_id ?? '—')"></p>
+                  </div>
+                </div>
+                <p class="text-xs text-slate-400 mb-2" x-text="'Type: ' + homoSelectedRow.homology_type"></p>
+                <!-- Alignment blocks -->
+                <div class="overflow-x-auto">
+                  <template x-for="(block, bi) in homoAlignmentBlocks" :key="bi">
+                    <div class="font-mono text-xs leading-5 mb-3">
+                      <div class="text-blue-700 whitespace-pre" x-text="block.queryLine"></div>
+                      <div class="text-slate-400 whitespace-pre" x-text="block.matchLine"></div>
+                      <div class="text-green-700 whitespace-pre" x-text="block.homoLine"></div>
+                    </div>
+                  </template>
+                </div>
+              </div>
+            </template>
+          </div>
+        </section>
+
+        <!-- Results table -->
+        <section class="bg-surface-1 border border-surface-2 rounded-xl overflow-hidden">
+          <div class="overflow-x-auto">
+            <table class="results-table w-full text-xs">
+              <thead>
+                <tr>
+                  <template x-for="col in homoDisplayColumns" :key="col">
+                    <th
+                      @click="homoSortBy(col)"
+                      class="px-4 py-3 text-left font-semibold text-slate-600 cursor-pointer select-none whitespace-nowrap"
+                    >
+                      <span x-text="col.replace(/_/g, ' ')"></span>
+                      <span
+                        class="sort-icon ml-1"
+                        :class="homoSortCol === col ? 'active' : ''"
+                        x-text="homoSortCol === col ? (homoSortAsc ? '▲' : '▼') : '⇕'"
+                      ></span>
+                    </th>
+                  </template>
+                </tr>
+              </thead>
+              <tbody>
+                <template x-for="(row, idx) in homoPagedRows" :key="idx">
+                  <tr
+                    @click="selectHomoRow(row)"
+                    class="border-t border-surface-2 cursor-pointer transition-colors"
+                    :class="homoSelectedRow === row ? 'ring-2 ring-inset ring-accent bg-surface-2' : ''"
+                  >
+                    <template x-for="col in homoDisplayColumns" :key="col">
+                      <td class="px-4 py-2.5 cell-truncate" x-text="row[col] ?? '—'"></td>
+                    </template>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- Pagination -->
+        <div x-show="homoTotalPages > 1" class="flex items-center justify-center gap-1 text-xs">
+          <span class="text-slate-500 mr-2">
+            Page <span x-text="homoCurrentPage"></span> of <span x-text="homoTotalPages"></span>
+          </span>
+          <button @click="homoCurrentPage = 1" :disabled="homoCurrentPage === 1"
+            class="btn-outline px-2 py-1 rounded disabled:opacity-40">«</button>
+          <button @click="homoCurrentPage--" :disabled="homoCurrentPage === 1"
+            class="btn-outline px-2 py-1 rounded disabled:opacity-40">‹</button>
+          <template x-for="p in homoPageNumbers" :key="p">
+            <button
+              @click="homoCurrentPage = p"
+              :class="p === homoCurrentPage ? 'bg-accent text-white' : 'btn-outline text-slate-600'"
+              class="px-2.5 py-1 rounded"
+              x-text="p"
+            ></button>
+          </template>
+          <button @click="homoCurrentPage++" :disabled="homoCurrentPage === homoTotalPages"
+            class="btn-outline px-2 py-1 rounded disabled:opacity-40">›</button>
+          <button @click="homoCurrentPage = homoTotalPages" :disabled="homoCurrentPage === homoTotalPages"
+            class="btn-outline px-2 py-1 rounded disabled:opacity-40">»</button>
+        </div>
+
+      </div>
+    </template>
+
+  </div><!-- end homology tab -->
+
   <!-- Floating tooltip (rendered outside main panel to avoid clipping) -->
   <div
     x-show="annTooltip.visible"
@@ -1154,6 +1359,23 @@
         annGeneInfo: {},
         annTooltip: {visible: false, seg: null, x: 0, y: 0},
 
+        // ── Homology tab — state ─────────────────────────────────
+        homoGeneId:        '',
+        homoHomologyType:  '',
+        homoLoading:       false,
+        homoError:         '',
+        homoToken:         '',
+        homoRows:          [],
+        homoDisplayColumns:[],
+        homoRowCount:      0,
+        homoDbName:        '',
+        homoSortCol:       '',
+        homoSortAsc:       true,
+        homoCurrentPage:   1,
+        homoPageSize:      30,
+        homoSelectedRow:   null,
+        homoAlignOpen:     true,
+
         // ── Annotate Protein tab — state ─────────────────────────
         paGeneId:        '',
         paSpecies:       '',
@@ -1221,6 +1443,70 @@
         pageSize: 30,
 
         // ── Computed ────────────────────────────────────────────
+        get homoSortedRows() {
+          if (!this.homoSortCol) return this.homoRows;
+          const col = this.homoSortCol, asc = this.homoSortAsc;
+          return [...this.homoRows].sort((a, b) => {
+            const va = a[col] ?? '', vb = b[col] ?? '';
+            if (va < vb) return asc ? -1 : 1;
+            if (va > vb) return asc ? 1 : -1;
+            return 0;
+          });
+        },
+
+        get homoTotalPages() {
+          return Math.max(1, Math.ceil(this.homoRows.length / this.homoPageSize));
+        },
+
+        get homoPagedRows() {
+          const start = (this.homoCurrentPage - 1) * this.homoPageSize;
+          return this.homoSortedRows.slice(start, start + this.homoPageSize);
+        },
+
+        get homoPageNumbers() {
+          const total = this.homoTotalPages, current = this.homoCurrentPage, delta = 2;
+          const pages = [];
+          for (let i = Math.max(1, current - delta); i <= Math.min(total, current + delta); i++) {
+            pages.push(i);
+          }
+          return pages;
+        },
+
+        parseCigar(cigar) {
+          const tokens = []; const re = /(\d+)([A-Z])/g; let m;
+          while ((m = re.exec(cigar)) !== null) tokens.push([parseInt(m[1], 10), m[2]]);
+          return tokens;
+        },
+
+        buildAligned(seq, cigar) {
+          let result = '', pos = 0;
+          for (const [count, op] of this.parseCigar(cigar)) {
+            if (op === 'M') { result += seq.slice(pos, pos + count); pos += count; }
+            else if (op === 'D') { result += '-'.repeat(count); }
+          }
+          return result;
+        },
+
+        get homoAlignmentBlocks() {
+          const row = this.homoSelectedRow;
+          if (!row || !row.query_cigar_line || !row.homolog_cigar_line) return [];
+          const qAligned = this.buildAligned(row.query_sequence || '', row.query_cigar_line);
+          const hAligned = this.buildAligned(row.homolog_sequence || '', row.homolog_cigar_line);
+          const len = Math.max(qAligned.length, hAligned.length);
+          const lineWidth = 60;
+          const blocks = [];
+          for (let i = 0; i < len; i += lineWidth) {
+            const qLine = qAligned.slice(i, i + lineWidth);
+            const hLine = hAligned.slice(i, i + lineWidth);
+            let matchLine = '';
+            for (let j = 0; j < Math.max(qLine.length, hLine.length); j++) {
+              matchLine += (qLine[j] && hLine[j] && qLine[j] === hLine[j] && qLine[j] !== '-') ? '|' : ' ';
+            }
+            blocks.push({ queryLine: qLine, matchLine, homoLine: hLine });
+          }
+          return blocks;
+        },
+
         get annCurrentSegments() {
           const tx = this.annTranscripts.find(t => t.transcript_id === this.annSelectedTranscript);
           return tx ? tx.segments : [];
@@ -1401,6 +1687,90 @@
           this.seqToken      = '';
           this.seqFasta      = '';
           this.seqGeneCount  = 0;
+        },
+
+        async submitHomology() {
+          this.homoError       = '';
+          this.homoRows        = [];
+          this.homoDisplayColumns = [];
+          this.homoToken       = '';
+          this.homoSelectedRow = null;
+          this.homoSortCol     = '';
+          this.homoCurrentPage = 1;
+
+          if (!this.homoGeneId.trim()) {
+            this.homoError = 'Please enter a gene ID.';
+            return;
+          }
+          if (!this.homoHomologyType) {
+            this.homoError = 'Please select a homology type.';
+            return;
+          }
+
+          this.homoLoading = true;
+          try {
+            const res = await fetch('/api/homology', {
+              method: 'POST',
+              headers: {'Content-Type': 'application/json'},
+              body: JSON.stringify({gene_id: this.homoGeneId.trim(), homology_type: this.homoHomologyType}),
+            });
+            const data = await res.json();
+            if (!res.ok) {
+              this.homoError = data.detail?.error ?? data.error ?? 'An unexpected error occurred.';
+              return;
+            }
+            this.homoToken          = data.token;
+            this.homoRows           = data.rows;
+            this.homoDisplayColumns = data.display_columns;
+            this.homoRowCount       = data.row_count;
+            this.homoDbName         = data.db_name;
+          } catch (err) {
+            this.homoError = 'Network error — could not reach the server. Please try again.';
+          } finally {
+            this.homoLoading = false;
+          }
+        },
+
+        resetHomologyState() {
+          this.homoGeneId         = '';
+          this.homoHomologyType   = '';
+          this.homoLoading        = false;
+          this.homoError          = '';
+          this.homoToken          = '';
+          this.homoRows           = [];
+          this.homoDisplayColumns = [];
+          this.homoRowCount       = 0;
+          this.homoDbName         = '';
+          this.homoSortCol        = '';
+          this.homoSortAsc        = true;
+          this.homoCurrentPage    = 1;
+          this.homoSelectedRow    = null;
+          this.homoAlignOpen      = true;
+        },
+
+        selectHomoRow(row) {
+          this.homoSelectedRow = (this.homoSelectedRow === row) ? null : row;
+          if (this.homoSelectedRow) this.homoAlignOpen = true;
+        },
+
+        homoSortBy(col) {
+          if (this.homoSortCol === col) {
+            this.homoSortAsc = !this.homoSortAsc;
+          } else {
+            this.homoSortCol = col;
+            this.homoSortAsc = true;
+          }
+          this.homoCurrentPage = 1;
+        },
+
+        downloadHomoCSV() {
+          if (!this.homoToken) return;
+          window.location.href = `/api/download/csv/${this.homoToken}`;
+        },
+
+        downloadHomoExcel() {
+          if (!this.homoToken) return;
+          window.location.href = `/api/download/excel/${this.homoToken}`;
         },
 
         resetState() {

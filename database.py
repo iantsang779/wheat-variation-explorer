@@ -39,6 +39,14 @@ DOMAIN_PREFIXES = {
     "Superfamily": r"^SSF",
 }
 
+_COMPARA_DB_PREFIX = "ensembl_compara_plants_"
+
+HOMOLOGY_TYPES = {
+    "orthologues":  ["ortholog_one2one", "ortholog_one2many", "ortholog_many2many"],
+    "homoeologues": ["homoeolog_one2one", "homoeolog_one2many", "homoeolog_many2many"],
+    "paralogues":   ["within_species_paralog", "other_paralog", "gene_split"],
+}
+
 
 # ---------------------------------------------------------------------------
 # Input validation
@@ -299,6 +307,52 @@ WHERE gene.stable_id = %s
   AND protein_feature.hit_name REGEXP %s
   AND gene.canonical_transcript_id = transcript.transcript_id
 """
+
+
+_HOMOLOGY_SQL = """
+SELECT
+    gm1.stable_id   AS query_gene_id,
+    gdb1.name       AS query_species,
+    s1.sequence     AS query_sequence,
+    hm1.perc_id     AS query_perc_id,
+    hm1.cigar_line  AS query_cigar_line,
+    h.description   AS homology_type,
+    gm2.stable_id   AS homolog_gene_id,
+    gdb2.name       AS homolog_species,
+    hm2.perc_id     AS homolog_perc_id,
+    hm2.cigar_line  AS homolog_cigar_line,
+    s2.sequence     AS homolog_sequence
+FROM
+    homology h
+    JOIN (homology_member hm1
+         JOIN gene_member gm1  USING (gene_member_id)
+         JOIN genome_db   gdb1 USING (genome_db_id)
+         JOIN seq_member  sm1  USING (seq_member_id)
+         JOIN sequence    s1   USING (sequence_id)) USING (homology_id)
+    JOIN (homology_member hm2
+         JOIN gene_member gm2  USING (gene_member_id)
+         JOIN genome_db   gdb2 USING (genome_db_id)
+         JOIN seq_member  sm2  USING (seq_member_id)
+         JOIN sequence    s2   USING (sequence_id))
+         USING (homology_id)
+WHERE gm1.gene_member_id != gm2.gene_member_id
+  AND gm1.stable_id = %s
+  AND ({hom_placeholder})
+"""
+
+
+async def fetch_homologs(
+    compara_pool: aiomysql.Pool,
+    gene_id: str,
+    homology_type: str,
+) -> list[dict]:
+    if homology_type not in HOMOLOGY_TYPES:
+        raise ValueError(f"Unknown homology_type '{homology_type}'.")
+    descriptions = HOMOLOGY_TYPES[homology_type]
+    hom_placeholder = " OR ".join("h.description = %s" for _ in descriptions)
+    sql = _HOMOLOGY_SQL.format(hom_placeholder=hom_placeholder)
+    params = (gene_id, *descriptions)
+    return await _run_query(compara_pool, sql, params)
 
 
 async def fetch_protein_domains(
