@@ -6,3 +6,4 @@ openpyxl
 aiofiles
 python-multipart
 httpx
+primer3-py

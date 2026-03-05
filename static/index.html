@@ -287,6 +287,24 @@
           </button>
         </div>
 
+        <!-- Primer / KASP Primer Designer -->
+        <div class="bg-surface-1 border border-surface-2 rounded-xl p-5 flex flex-col gap-3 shadow-sm hover:shadow-md transition-shadow">
+          <div>
+            <span class="text-base font-bold text-accent">Primer / KASP Primer Designer</span>
+            <p class="text-sm text-slate-700 mt-1.5 text-justify">
+              Design KASP or standard PCR primers directly from variant results. Click any row in the Variant Explorer to fetch flanking sequence and run Primer3 server-side — no manual coordinate lookup required.
+              Returns up to 5 ranked primer pairs with Tm, GC%, hairpin, and self-complementarity stats.
+            </p>
+          </div>
+          <div class="text-xs text-slate-500 space-y-1 border-t border-surface-2 pt-3 text-justify">
+            <p><span class="font-semibold text-slate-600">How it works:</span> Fetches flanking genomic sequence from the Ensembl REST API, then runs Primer3 to design allele-specific (KASP) or standard forward/reverse primer pairs.</p>
+            <p><span class="font-semibold text-slate-600">Note:</span> Embedded in the Variant Explorer — click any result row to activate.</p>
+          </div>
+          <button @click="activeTab = 'variants'" class="btn-primary mt-auto text-white text-sm font-medium rounded-lg px-4 py-2 self-start">
+            Open tool &rarr;
+          </button>
+        </div>
+
         <!-- Pull Homologous Sequences -->
         <div class="bg-surface-1 border border-surface-2 rounded-xl p-5 flex flex-col gap-3 shadow-sm hover:shadow-md transition-shadow">
           <div>
@@ -503,6 +521,129 @@
       </template>
     </div>
 
+    <!-- ── Primer Designer Panel ─────────────────────────────── -->
+    <div x-show="selectedVariant" class="border border-blue-200 rounded-xl bg-white shadow-sm p-5 space-y-4">
+      <!-- Header row -->
+      <div class="flex items-center justify-between">
+        <div>
+          <h3 class="font-semibold text-slate-800">
+            Primer Design —
+            <span x-text="selectedVariant?.Variant" class="text-blue-700"></span>
+          </h3>
+          <p class="text-xs text-slate-500 mt-0.5">
+            <span x-text="selectedVariant?.Chromosome"></span> :
+            <span x-text="selectedVariant?.Location"></span>  ·
+            Alleles: <span x-text="selectedVariant?.allele_string || '—'"></span>
+          </p>
+        </div>
+        <div class="flex items-center gap-3">
+          <!-- KASP / PCR toggle -->
+          <div class="flex rounded-lg border border-slate-200 overflow-hidden text-xs font-medium">
+            <button @click="primerType='kasp'; fetchPrimers()"
+              :class="primerType==='kasp' ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-50'"
+              class="px-3 py-1.5 transition-colors">KASP</button>
+            <button @click="primerType='pcr'; fetchPrimers()"
+              :class="primerType==='pcr' ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-50'"
+              class="px-3 py-1.5 transition-colors">PCR</button>
+          </div>
+          <!-- Close button -->
+          <button @click="selectedVariant=null; primerResult=null; primerError=''"
+            class="text-slate-400 hover:text-slate-600 text-lg leading-none">✕</button>
+        </div>
+      </div>
+
+      <!-- Loading -->
+      <div x-show="primerLoading" class="text-sm text-slate-500 animate-pulse">Designing primers…</div>
+
+      <!-- Error -->
+      <div x-show="primerError" x-text="primerError"
+        class="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2"></div>
+
+      <!-- Results -->
+      <template x-if="primerResult && primerResult.primer_pairs.length > 0">
+        <div class="space-y-4">
+
+          <!-- SVG Diagram -->
+          <div x-html="buildPrimerSVG(primerResult, primerPairIdx)"
+            class="w-full overflow-x-auto rounded-lg bg-slate-50 border border-slate-100 p-3">
+          </div>
+
+          <!-- Pair navigator -->
+          <div class="flex items-center gap-2">
+            <span class="text-xs text-slate-500 font-medium">Pair</span>
+            <template x-for="(p, i) in primerResult.primer_pairs" :key="i">
+              <button
+                @click="primerPairIdx = i"
+                :class="primerPairIdx === i ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'"
+                class="w-6 h-6 rounded-full text-xs font-semibold transition-colors"
+                x-text="i + 1">
+              </button>
+            </template>
+          </div>
+
+          <!-- Stats cards (for current pair) -->
+          <template x-if="primerResult.primer_pairs[primerPairIdx]">
+            <div class="space-y-3">
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+
+                <!-- REF (or Left) primer card -->
+                <div class="rounded-lg border border-blue-100 bg-blue-50 p-3 text-sm space-y-1">
+                  <p class="font-semibold text-blue-800 text-xs uppercase tracking-wide"
+                    x-text="primerResult.primer_type === 'kasp' ? 'Fwd — REF allele' : 'Forward primer'"></p>
+                  <p class="font-mono text-xs text-slate-700 break-all"
+                    x-text="primerResult.primer_pairs[primerPairIdx].left_ref_seq"></p>
+                  <div class="grid grid-cols-3 gap-1 pt-1 text-xs text-slate-600">
+                    <span>Tm <b x-text="primerResult.primer_pairs[primerPairIdx].left_tm + '°C'"></b></span>
+                    <span>GC <b x-text="primerResult.primer_pairs[primerPairIdx].left_gc + '%'"></b></span>
+                    <span>Hairpin <b x-text="primerResult.primer_pairs[primerPairIdx].left_hairpin_tm + '°C'"></b></span>
+                    <span>Self-comp <b x-text="primerResult.primer_pairs[primerPairIdx].left_self_any"></b></span>
+                    <span>Len <b x-text="primerResult.primer_pairs[primerPairIdx].left_length + ' bp'"></b></span>
+                  </div>
+                </div>
+
+                <!-- ALT primer card (KASP only) -->
+                <template x-if="primerResult.primer_type === 'kasp'">
+                  <div class="rounded-lg border border-orange-100 bg-orange-50 p-3 text-sm space-y-1">
+                    <p class="font-semibold text-orange-800 text-xs uppercase tracking-wide">Fwd — ALT allele</p>
+                    <p class="font-mono text-xs text-slate-700 break-all"
+                      x-text="primerResult.primer_pairs[primerPairIdx].left_alt_seq"></p>
+                    <p class="text-xs text-slate-500 italic">Identical to REF primer except 3′ base</p>
+                  </div>
+                </template>
+
+                <!-- Reverse primer card -->
+                <div class="rounded-lg border border-green-100 bg-green-50 p-3 text-sm space-y-1"
+                  :class="primerResult.primer_type === 'kasp' ? 'sm:col-span-2' : ''">
+                  <p class="font-semibold text-green-800 text-xs uppercase tracking-wide">
+                    <span x-text="primerResult.primer_type === 'kasp' ? 'Common reverse primer' : 'Reverse primer'"></span>
+                  </p>
+                  <p class="font-mono text-xs text-slate-700 break-all"
+                    x-text="primerResult.primer_pairs[primerPairIdx].right_seq"></p>
+                  <div class="grid grid-cols-3 gap-1 pt-1 text-xs text-slate-600">
+                    <span>Tm <b x-text="primerResult.primer_pairs[primerPairIdx].right_tm + '°C'"></b></span>
+                    <span>GC <b x-text="primerResult.primer_pairs[primerPairIdx].right_gc + '%'"></b></span>
+                    <span>Hairpin <b x-text="primerResult.primer_pairs[primerPairIdx].right_hairpin_tm + '°C'"></b></span>
+                    <span>Self-comp <b x-text="primerResult.primer_pairs[primerPairIdx].right_self_any"></b></span>
+                    <span>Len <b x-text="primerResult.primer_pairs[primerPairIdx].right_length + ' bp'"></b></span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Pair summary row -->
+              <div class="flex items-center gap-4 text-xs text-slate-600 border-t border-slate-100 pt-2">
+                <span>Product size: <b x-text="primerResult.primer_pairs[primerPairIdx].product_size + ' bp'"></b></span>
+                <span>Penalty: <b x-text="primerResult.primer_pairs[primerPairIdx].pair_penalty"></b></span>
+                <button @click="exportPrimers()"
+                  class="ml-auto flex items-center gap-1 text-xs font-medium text-slate-600 hover:text-blue-700 border border-slate-200 rounded-lg px-3 py-1.5 hover:border-blue-300 transition-colors">
+                  Export all pairs (CSV)
+                </button>
+              </div>
+            </div>
+          </template>
+        </div>
+      </template>
+    </div>
+
     <!-- ── Results Panel ─────────────────────────────────────── -->
     <section
       x-show="!loading && rows.length > 0"
@@ -583,7 +724,11 @@
           </thead>
           <tbody class="divide-y divide-surface-2">
             <template x-for="(row, rIdx) in pagedRows" :key="rIdx">
-              <tr class="bg-surface-1 transition-colors">
+              <tr
+                class="bg-surface-1 transition-colors cursor-pointer"
+                :class="selectedVariant === row ? 'bg-blue-100' : 'hover:bg-blue-50'"
+                @click="selectVariantForPrimers(row)"
+              >
                 <template x-for="col in columns" :key="col">
                   <td class="px-4 py-2.5 text-slate-700">
                     <span
@@ -1529,6 +1674,15 @@
         homoAlignOpen:     true,
         homoLineWidth:     80,
 
+        // ── Primer designer state ────────────────────────────────
+        selectedVariant: null,
+        primerLoading:   false,
+        primerError:     '',
+        primerResult:    null,
+        primerPairIdx:   0,
+        primerType:      'kasp',
+        primerFlankingBp: 200,
+
         // ── Annotate Protein tab — state ─────────────────────────
         paGeneId:        '',
         paSpecies:       '',
@@ -1964,6 +2118,10 @@
           this.hasMarkers               = false;
           this.sortCol                  = '';
           this.currentPage              = 1;
+          this.selectedVariant          = null;
+          this.primerResult             = null;
+          this.primerError              = '';
+          this.primerPairIdx            = 0;
         },
 
         async submitAnnotate() {
@@ -2092,6 +2250,108 @@
           this.paDomainFeatures = [];
           this.paToken          = '';
           this.paTooltip        = {visible: false, iv: null, x: 0, y: 0};
+        },
+
+        // ── Primer designer methods ──────────────────────────────
+        selectVariantForPrimers(row) {
+          if (this.selectedVariant === row) {
+            this.selectedVariant = null;
+            this.primerResult    = null;
+            this.primerError     = '';
+            return;
+          }
+          this.selectedVariant = row;
+          this.primerResult    = null;
+          this.primerError     = '';
+          this.primerPairIdx   = 0;
+          this.fetchPrimers();
+        },
+
+        async fetchPrimers() {
+          this.primerLoading = true;
+          this.primerError   = '';
+          const row = this.selectedVariant;
+          const locStr = row['Location'] ? String(row['Location']) : '0';
+          const pos = parseInt(locStr.split('-')[0], 10);
+          try {
+            const resp = await fetch('/api/primers', {
+              method: 'POST',
+              headers: {'Content-Type': 'application/json'},
+              body: JSON.stringify({
+                variant_name: row['Variant'] || '',
+                chromosome:   row['Chromosome'] || '',
+                position:     pos,
+                allele_string: row['allele_string'] || 'A/T',
+                flanking_bp:  this.primerFlankingBp,
+                num_pairs:    5,
+                primer_type:  this.primerType,
+              }),
+            });
+            if (!resp.ok) {
+              const err = await resp.json();
+              throw new Error(err.detail?.error || err.detail || 'Primer design failed');
+            }
+            this.primerResult = await resp.json();
+          } catch (e) {
+            this.primerError = e.message;
+          } finally {
+            this.primerLoading = false;
+          }
+        },
+
+        buildPrimerSVG(result, pairIdx) {
+          const pair = result.primer_pairs[pairIdx];
+          if (!pair) return '';
+          const total = result.flanking_seq.length;
+          const W = 580, H = 80;
+          const toX = pos => Math.round((pos / total) * W) + 10;
+          const snpX = toX(result.snp_offset);
+
+          const lx1 = toX(pair.left_start);
+          const lx2 = toX(pair.left_start + pair.left_length);
+          const rx2 = toX(pair.right_start + 1);
+          const rx1 = toX(pair.right_start - pair.right_length + 1);
+
+          const arrow = (x1, x2, y, color, label) => {
+            const dir = x2 > x1 ? 1 : -1;
+            return `<line x1="${x1}" y1="${y}" x2="${x2 - dir * 6}" y2="${y}" stroke="${color}" stroke-width="6" stroke-linecap="round"/>
+                    <polygon points="${x2},${y} ${x2 - dir * 10},${y - 5} ${x2 - dir * 10},${y + 5}" fill="${color}"/>
+                    <text x="${(x1 + x2) / 2}" y="${y - 9}" text-anchor="middle" font-size="9" fill="${color}">${label}</text>`;
+          };
+
+          let svg = `<svg xmlns="http://www.w3.org/2000/svg" width="100%" viewBox="0 0 600 ${H}" font-family="monospace">`;
+          svg += `<line x1="10" y1="40" x2="590" y2="40" stroke="#cbd5e1" stroke-width="2"/>`;
+          svg += `<line x1="${snpX}" y1="24" x2="${snpX}" y2="56" stroke="#ef4444" stroke-width="2" stroke-dasharray="3,2"/>`;
+          svg += `<text x="${snpX}" y="70" text-anchor="middle" font-size="9" fill="#ef4444">${result.allele_string}</text>`;
+          svg += `<line x1="${lx1}" y1="14" x2="${rx2}" y2="14" stroke="#94a3b8" stroke-width="1"/>`;
+          svg += `<text x="${(lx1 + rx2) / 2}" y="11" text-anchor="middle" font-size="8" fill="#94a3b8">${pair.product_size} bp</text>`;
+          if (result.primer_type === 'kasp') {
+            svg += arrow(lx1, lx2, 35, '#2563eb', 'Fwd-REF');
+            svg += arrow(lx1, lx2, 47, '#ea580c', 'Fwd-ALT');
+          } else {
+            svg += arrow(lx1, lx2, 40, '#2563eb', 'Fwd');
+          }
+          svg += arrow(rx2, rx1, 40, '#16a34a', 'Rev');
+          svg += '</svg>';
+          return svg;
+        },
+
+        exportPrimers() {
+          const r = this.primerResult;
+          const isKasp = r.primer_type === 'kasp';
+          const headers = isKasp
+            ? ['Rank','Fwd_REF','Fwd_ALT','Rev','Product_bp','Fwd_Tm','Rev_Tm','Fwd_GC','Rev_GC','Fwd_Hairpin_Tm','Rev_Hairpin_Tm','Fwd_SelfAny','Rev_SelfAny','Penalty']
+            : ['Rank','Fwd','Rev','Product_bp','Fwd_Tm','Rev_Tm','Fwd_GC','Rev_GC','Fwd_Hairpin_Tm','Rev_Hairpin_Tm','Fwd_SelfAny','Rev_SelfAny','Penalty'];
+          const rows = r.primer_pairs.map(p => isKasp
+            ? [p.rank, p.left_ref_seq, p.left_alt_seq, p.right_seq, p.product_size, p.left_tm, p.right_tm, p.left_gc, p.right_gc, p.left_hairpin_tm, p.right_hairpin_tm, p.left_self_any, p.right_self_any, p.pair_penalty]
+            : [p.rank, p.left_ref_seq, p.right_seq, p.product_size, p.left_tm, p.right_tm, p.left_gc, p.right_gc, p.left_hairpin_tm, p.right_hairpin_tm, p.left_self_any, p.right_self_any, p.pair_penalty]
+          );
+          const csv = [headers, ...rows].map(r => r.join(',')).join('\n');
+          const blob = new Blob([csv], {type: 'text/csv'});
+          const a = document.createElement('a');
+          a.href = URL.createObjectURL(blob);
+          a.download = `${r.variant_name}_primers_${r.primer_type}.csv`;
+          a.click();
         },
 
         get paIntervals() {

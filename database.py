@@ -158,7 +158,8 @@ SELECT
     a.codon_allele_string,
     a.pep_allele_string,
     a.sift_prediction,
-    a.sift_score
+    a.sift_score,
+    b.allele_string
 FROM transcript_variation a
     JOIN variation_feature b USING (variation_feature_id)
     JOIN variation c USING (variation_id)

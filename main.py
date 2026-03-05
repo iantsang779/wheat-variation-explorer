@@ -334,6 +334,48 @@ class HomologyResponse(BaseModel):
     db_name:         str
 
 
+class PrimerRequest(BaseModel):
+    variant_name: str
+    chromosome: str
+    position: int
+    allele_string: str
+    flanking_bp: int = 200
+    num_pairs: int = 5
+    primer_type: str = "kasp"   # "kasp" | "pcr"
+
+
+class PrimerPair(BaseModel):
+    rank: int
+    left_ref_seq: str
+    left_alt_seq: str | None
+    right_seq: str
+    left_start: int
+    left_length: int
+    right_start: int
+    right_length: int
+    product_size: int
+    left_tm: float
+    right_tm: float
+    left_gc: float
+    right_gc: float
+    left_hairpin_tm: float
+    right_hairpin_tm: float
+    left_self_any: float
+    right_self_any: float
+    pair_penalty: float
+
+
+class PrimerResponse(BaseModel):
+    variant_name: str
+    chromosome: str
+    position: int
+    allele_string: str
+    flanking_seq: str
+    snp_offset: int
+    primer_type: str
+    primer_pairs: list[PrimerPair]
+
+
 _HOMO_DISPLAY_COLS = [
     "query_gene_id", "query_species", "query_perc_id",
     "homology_type",
@@ -819,4 +861,118 @@ async def fetch_homology(request: HomologyRequest):
         rows=rows,
         row_count=len(rows),
         db_name=app.state.compara_db_name,
+    )
+
+
+@app.post("/api/primers", response_model=PrimerResponse)
+async def design_primers(req: PrimerRequest):
+    import primer3
+
+    try:
+        validate_input(req.variant_name, "variant_name")
+        validate_input(req.chromosome, "chromosome")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail={"error": str(exc)})
+
+    if req.primer_type not in {"kasp", "pcr"}:
+        raise HTTPException(status_code=400, detail={"error": "primer_type must be 'kasp' or 'pcr'"})
+
+    flanking_bp = max(50, min(500, req.flanking_bp))
+    num_pairs   = max(1, min(10, req.num_pairs))
+    start = max(1, req.position - flanking_bp)
+    end   = req.position + flanking_bp
+
+    # Fetch flanking sequence from Ensembl REST
+    region = f"{req.chromosome}:{start}..{end}"
+    try:
+        async with httpx.AsyncClient(timeout=_ENSEMBL_TIMEOUT_SECS) as client:
+            resp = await client.get(
+                f"{ENSEMBL_REST_BASE}/sequence/region/triticum_aestivum/{region}",
+                headers={"Accept": "application/json"},
+            )
+    except httpx.TimeoutException:
+        raise HTTPException(status_code=504, detail={"error": "Ensembl REST API timed out."})
+    except httpx.RequestError as exc:
+        raise HTTPException(status_code=502, detail={"error": f"Could not reach Ensembl REST API: {exc}"})
+
+    if not resp.is_success:
+        raise HTTPException(status_code=502, detail={"error": f"Failed to fetch flanking sequence from Ensembl (status {resp.status_code})"})
+
+    flanking_seq = resp.json()["seq"].upper()
+    snp_offset = req.position - start   # 0-indexed SNP position in flanking_seq
+
+    # Run primer3 (synchronous — offload to thread)
+    alleles = req.allele_string.split("/")
+    ref = alleles[0]
+    alt = alleles[1] if len(alleles) > 1 else alleles[0]
+
+    if req.primer_type == "kasp":
+        seq_args = {
+            "SEQUENCE_ID": req.variant_name,
+            "SEQUENCE_TEMPLATE": flanking_seq,
+            "SEQUENCE_FORCE_LEFT_END": snp_offset,
+        }
+    else:
+        seq_args = {
+            "SEQUENCE_ID": req.variant_name,
+            "SEQUENCE_TEMPLATE": flanking_seq,
+            "SEQUENCE_TARGET": [[snp_offset, 1]],
+        }
+
+    global_args = {
+        "PRIMER_OPT_SIZE": 20, "PRIMER_MIN_SIZE": 18, "PRIMER_MAX_SIZE": 25,
+        "PRIMER_OPT_TM": 60.0, "PRIMER_MIN_TM": 57.0, "PRIMER_MAX_TM": 63.0,
+        "PRIMER_MIN_GC": 20.0, "PRIMER_MAX_GC": 80.0,
+        "PRIMER_PRODUCT_SIZE_RANGE": [[75, 300]],
+        "PRIMER_NUM_RETURN": num_pairs,
+        "PRIMER_THERMODYNAMIC_OLIGO_ALIGNMENT": 1,
+    }
+
+    p3 = await asyncio.to_thread(primer3.bindings.design_primers, seq_args, global_args)
+
+    num_returned = p3.get("PRIMER_PAIR_NUM_RETURNED", 0)
+    if num_returned == 0:
+        raise HTTPException(status_code=422, detail={"error": "Primer3 could not design primers for this region. Try increasing the flanking window or relaxing Tm constraints."})
+
+    pairs = []
+    for i in range(num_returned):
+        left_seq = p3[f"PRIMER_LEFT_{i}_SEQUENCE"]
+        if req.primer_type == "kasp":
+            left_ref = left_seq[:-1] + ref
+            left_alt = left_seq[:-1] + alt
+        else:
+            left_ref = left_seq
+            left_alt = None
+
+        l_start, l_len = p3[f"PRIMER_LEFT_{i}"]
+        r_start, r_len = p3[f"PRIMER_RIGHT_{i}"]
+
+        pairs.append(PrimerPair(
+            rank=i + 1,
+            left_ref_seq=left_ref,
+            left_alt_seq=left_alt,
+            right_seq=p3[f"PRIMER_RIGHT_{i}_SEQUENCE"],
+            left_start=l_start, left_length=l_len,
+            right_start=r_start, right_length=r_len,
+            product_size=p3[f"PRIMER_PAIR_{i}_PRODUCT_SIZE"],
+            left_tm=round(p3[f"PRIMER_LEFT_{i}_TM"], 2),
+            right_tm=round(p3[f"PRIMER_RIGHT_{i}_TM"], 2),
+            left_gc=round(p3[f"PRIMER_LEFT_{i}_GC_PERCENT"], 1),
+            right_gc=round(p3[f"PRIMER_RIGHT_{i}_GC_PERCENT"], 1),
+            left_hairpin_tm=round(p3.get(f"PRIMER_LEFT_{i}_HAIRPIN_TH", 0.0), 2),
+            right_hairpin_tm=round(p3.get(f"PRIMER_RIGHT_{i}_HAIRPIN_TH", 0.0), 2),
+            left_self_any=round(p3.get(f"PRIMER_LEFT_{i}_SELF_ANY_TH", 0.0), 2),
+            right_self_any=round(p3.get(f"PRIMER_RIGHT_{i}_SELF_ANY_TH", 0.0), 2),
+            pair_penalty=round(p3[f"PRIMER_PAIR_{i}_PENALTY"], 4),
+        ))
+
+    return PrimerResponse(
+        variant_name=req.variant_name,
+        chromosome=req.chromosome,
+        position=req.position,
+        allele_string=req.allele_string,
+        flanking_seq=flanking_seq,
+        snp_offset=snp_offset,
+        primer_type=req.primer_type,
+        primer_pairs=pairs,
     )
