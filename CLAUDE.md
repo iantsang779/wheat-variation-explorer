@@ -125,6 +125,29 @@ Endpoint: `POST /api/homology` — accepts `{ gene_id: string, homology_type: st
 - "Export alignment (.txt)" button triggers a client-side Blob download of the formatted alignment text.
 - CSV/Excel downloads include all 11 columns (sequences + CIGARs) and are named `{gene_id}_homology.csv/.xlsx`.
 
+### Primer / KASP Primer Designer
+
+Endpoint: `POST /api/primers` — accepts `{ variant_name, chromosome, position, allele_string, flanking_bp=200, num_pairs=5, primer_type="kasp"|"pcr" }`.
+
+**Backend flow:**
+1. Validate `variant_name` and `chromosome` via `validate_input()`; clamp `flanking_bp` to 50–500 and `num_pairs` to 1–10.
+2. Fetch flanking genomic sequence from Ensembl REST: `GET /sequence/region/triticum_aestivum/{chr}:{start}..{end}`.
+3. Run `primer3.bindings.design_primers()` via `asyncio.to_thread()` (synchronous call — offloaded to avoid blocking the event loop).
+   - KASP mode: `SEQUENCE_FORCE_LEFT_END = snp_offset` forces the 3′ end of the left primer to sit exactly at the SNP.
+   - PCR mode: `SEQUENCE_TARGET = [[snp_offset, 1]]` requires primers to flank the SNP.
+4. For KASP pairs, `left_ref_seq` and `left_alt_seq` are derived by replacing the 3′ base of the designed left primer with the REF and ALT alleles respectively.
+5. Returns `PrimerResponse` with `flanking_seq`, `snp_offset`, and up to `num_pairs` `PrimerPair` objects (Tm, GC%, hairpin Tm, self-complementarity, penalty).
+
+**`_VARIANT_SQL_BASE`** now includes `b.allele_string` (DNA-level alleles, e.g. `"A/T"`) as an extra column returned by all variant queries.
+
+**Frontend behaviour:**
+- Every row in the Variant Explorer table is clickable; clicking a row triggers `selectVariantForPrimers(row)`, which calls `fetchPrimers()` automatically.
+- Clicking the same row again deselects it and closes the panel.
+- The primer panel appears above the results table with a KASP/PCR toggle, loading/error state, an SVG diagram (backbone, SNP marker, primer arrows drawn to scale), a pair navigator (1–5), REF/ALT/Rev primer cards with stats, product size/penalty, and a CSV export button.
+- `buildPrimerSVG()` generates an inline SVG entirely client-side from the response coordinates.
+- `exportPrimers()` creates a client-side Blob CSV download named `{variant_name}_primers_{type}.csv`.
+- `resetState()` clears primer state alongside query results.
+
 ### Input validation
 
 All user inputs pass through `validate_input()` in `database.py` before query construction: max 100 chars, regex `^[\w.\-]+$`. SQL parameters are always passed via aiomysql parameterisation (never interpolated).
