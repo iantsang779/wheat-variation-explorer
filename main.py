@@ -57,11 +57,11 @@ _VALID_SEQ_TYPES      = {"genomic", "cdna", "cds", "protein"}
 _result_cache: OrderedDict[str, dict[str, Any]] = OrderedDict()
 
 
-def _cache_store(token: str, data: list[dict], columns: list[str]) -> None:
+def _cache_store(token: str, data: list[dict], columns: list[str], filename: str = "wheat_variants") -> None:
     """Insert a result into the cache, evicting the oldest entry if full."""
     if len(_result_cache) >= _CACHE_MAX_ENTRIES:
         _result_cache.popitem(last=False)
-    _result_cache[token] = {"data": data, "columns": columns, "ts": time.time()}
+    _result_cache[token] = {"data": data, "columns": columns, "filename": filename, "ts": time.time()}
 
 
 def _cache_get(token: str) -> dict[str, Any]:
@@ -427,7 +427,7 @@ async def download_csv(token: str):
         iter([buf.getvalue()]),
         media_type="text/csv",
         headers={
-            "Content-Disposition": "attachment; filename=wheat_variants.csv"
+            "Content-Disposition": f"attachment; filename={entry['filename']}.csv"
         },
     )
 
@@ -446,7 +446,7 @@ async def download_excel(token: str):
         iter([buf.getvalue()]),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={
-            "Content-Disposition": "attachment; filename=wheat_variants.xlsx"
+            "Content-Disposition": f"attachment; filename={entry['filename']}.xlsx"
         },
     )
 
@@ -810,7 +810,7 @@ async def fetch_homology(request: HomologyRequest):
                 row[field] = row[field].decode("utf-8", errors="replace")
 
     token = str(uuid.uuid4())
-    _cache_store(token, rows, _HOMO_ALL_COLS)
+    _cache_store(token, rows, _HOMO_ALL_COLS, filename=f"{gene_id}_homology")
 
     return HomologyResponse(
         token=token,
