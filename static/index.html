@@ -1229,7 +1229,7 @@
                       @click="homoSortBy(col)"
                       class="px-4 py-3 text-left font-semibold text-slate-600 cursor-pointer select-none whitespace-nowrap"
                     >
-                      <span x-text="col.replace(/_/g, ' ')"></span>
+                      <span x-text="({'query_perc_id':'Query ID %','homolog_perc_id':'Homolog ID %'}[col] || col.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()).replace(/\bId\b/g, 'ID'))"></span>
                       <span
                         class="sort-icon ml-1"
                         :class="homoSortCol === col ? 'active' : ''"
