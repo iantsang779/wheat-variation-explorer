@@ -1604,12 +1604,15 @@
     <div id="arch-scroll-box"
          class="overflow-auto rounded-xl border border-surface-2 shadow-inner bg-white"
          style="height: 720px; cursor: grab;">
-      <iframe id="arch-iframe"
-              src="/static/architecture.html"
-              title="PlantBox System Architecture Diagram"
-              style="width: 1280px; height: 920px; border: none; display: block; transform-origin: top left;"
-              scrolling="no">
-      </iframe>
+      <!-- arch-scale-wrapper grows to the true visual size so the scroll container tracks it -->
+      <div id="arch-scale-wrapper" style="width: 1280px; height: 920px; flex-shrink: 0;">
+        <iframe id="arch-iframe"
+                src="/static/architecture.html"
+                title="PlantBox System Architecture Diagram"
+                style="width: 1280px; height: 920px; border: none; display: block; transform-origin: top left;"
+                scrolling="no">
+        </iframe>
+      </div>
     </div>
 
     <!-- ── Verbose descriptions ──────────────────────────────── -->
@@ -2864,26 +2867,57 @@
       };
     }
 
-    // ── Architecture tab zoom ──────────────────────────────────────────────────
+    // ── Architecture tab zoom & pan ────────────────────────────────────────────
+    const _ARCH_W = 1280, _ARCH_H = 920;
     let _archScale = 1.0;
-    function archZoom(delta) {
-      _archScale = Math.min(2.0, Math.max(0.3, _archScale + delta));
-      const iframe = document.getElementById('arch-iframe');
-      if (!iframe) return;
-      iframe.style.transform = `scale(${_archScale})`;
-      // Expand iframe logical dimensions so the scroll container tracks true size
-      iframe.style.width  = Math.round(1280 / _archScale) + 'px';
-      iframe.style.height = Math.round(920  / _archScale) + 'px';
+
+    function _archApplyScale() {
+      const iframe  = document.getElementById('arch-iframe');
+      const wrapper = document.getElementById('arch-scale-wrapper');
+      if (!iframe || !wrapper) return;
+      // iframe stays at native size; transform scales its visual appearance
+      iframe.style.transform = _archScale === 1.0 ? '' : `scale(${_archScale})`;
+      // wrapper expands to the true visual dimensions so the scroll box scrolls correctly
+      wrapper.style.width  = Math.round(_ARCH_W * _archScale) + 'px';
+      wrapper.style.height = Math.round(_ARCH_H * _archScale) + 'px';
       const pct = document.getElementById('arch-zoom-pct');
       if (pct) pct.textContent = Math.round(_archScale * 100) + '%';
     }
+    function archZoom(delta) {
+      _archScale = Math.min(2.0, Math.max(0.3, _archScale + delta));
+      _archApplyScale();
+    }
     function archZoomReset() {
       _archScale = 1.0;
-      const iframe = document.getElementById('arch-iframe');
-      if (iframe) { iframe.style.transform = ''; iframe.style.width = '1280px'; iframe.style.height = '920px'; }
-      const pct = document.getElementById('arch-zoom-pct');
-      if (pct) pct.textContent = '100%';
+      _archApplyScale();
     }
+
+    // Drag-to-pan for the arch scroll box
+    (function () {
+      const box = document.getElementById('arch-scroll-box');
+      if (!box) return;
+      let _dragging = false, _startX = 0, _startY = 0, _scrollX = 0, _scrollY = 0;
+      box.addEventListener('mousedown', function (e) {
+        if (e.button !== 0) return;
+        _dragging = true;
+        _startX = e.clientX;
+        _startY = e.clientY;
+        _scrollX = box.scrollLeft;
+        _scrollY = box.scrollTop;
+        box.style.cursor = 'grabbing';
+        e.preventDefault();
+      });
+      window.addEventListener('mousemove', function (e) {
+        if (!_dragging) return;
+        box.scrollLeft = _scrollX - (e.clientX - _startX);
+        box.scrollTop  = _scrollY - (e.clientY - _startY);
+      });
+      window.addEventListener('mouseup', function () {
+        if (!_dragging) return;
+        _dragging = false;
+        box.style.cursor = 'grab';
+      });
+    })();
   </script>
 
 </body>
