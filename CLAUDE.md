@@ -21,6 +21,43 @@ uvicorn main:app --host 0.0.0.0 --port 8000 --workers 1
 uvicorn main:app --reload
 ```
 
+## Docstring standard
+
+**Every function and async route handler in `main.py` and `database.py` must have a detailed Google-style docstring.** This is a hard requirement for all new and modified code.
+
+A complete docstring must include:
+
+1. **Summary line** — one sentence describing what the function does.
+2. **Extended description** — additional paragraphs if the behaviour is non-trivial (e.g. concurrent sub-calls, caching strategy, SQL joins, edge-case handling).
+3. **Args section** — every parameter, with its type and a meaningful description.  Omit only if the function takes no arguments.
+4. **Returns section** — the type and a description of the returned value.  Omit only for `None`-returning helpers where the effect is the purpose.
+5. **Raises section** — every exception the function can raise, with the trigger condition.  Omit only if no exceptions are raised.
+
+**Format:**
+```python
+def example(pool: aiomysql.Pool, gene_id: str) -> str | None:
+    """
+    One-line summary.
+
+    Extended explanation if needed.
+
+    Args:
+        pool: Description of the pool parameter.
+        gene_id: Ensembl stable gene ID, e.g. ``"TRAESCS3D02G273600"``.
+
+    Returns:
+        The transcript stable ID string, or ``None`` if not found.
+
+    Raises:
+        ValueError: If gene_id contains disallowed characters.
+    """
+```
+
+Apply this standard when:
+- Adding any new function or endpoint.
+- Modifying an existing function in a way that changes its behaviour, inputs, or outputs.
+- Do **not** retrofit docstrings onto lines of code you are not otherwise touching.
+
 ## Git workflow
 
 After completing any change to the codebase, stage the relevant files and **ask the user for permission before committing**. Once approved, commit with a concise message in this format:

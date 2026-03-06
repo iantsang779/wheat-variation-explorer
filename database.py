@@ -53,7 +53,27 @@ HOMOLOGY_TYPES = {
 # ---------------------------------------------------------------------------
 
 def validate_input(value: str | None, field_name: str) -> str | None:
-    """Strip whitespace, enforce length and character constraints."""
+    """
+    Sanitise and validate a single user-supplied input string.
+
+    Strips leading/trailing whitespace, rejects values exceeding
+    ``_MAX_INPUT_LEN`` characters, and enforces that only word characters
+    (``[A-Za-z0-9_]``), dots, and hyphens are present via ``_INPUT_RE``.
+    Returns ``None`` for empty or ``None`` inputs so callers can distinguish
+    "not provided" from invalid.
+
+    Args:
+        value: Raw string from the request, or ``None`` if the field was omitted.
+        field_name: Human-readable field name used in error messages.
+
+    Returns:
+        The stripped, validated string, or ``None`` if the input was absent or
+        became empty after stripping.
+
+    Raises:
+        ValueError: If the value exceeds the maximum length or contains
+            disallowed characters.
+    """
     if value is None:
         return None
     value = value.strip()
@@ -143,7 +163,21 @@ async def create_pool(db_name: str) -> aiomysql.Pool:
 # ---------------------------------------------------------------------------
 
 async def _run_query(pool: aiomysql.Pool, sql: str, params: tuple) -> list[dict]:
-    """Execute a parameterised query and return rows as a list of dicts."""
+    """
+    Execute a parameterised SQL query against the given pool and return all rows.
+
+    Uses ``aiomysql.DictCursor`` so each row is a ``dict`` keyed by column name.
+    Parameters are always passed through aiomysql's parameterisation layer and
+    never interpolated into the SQL string.
+
+    Args:
+        pool: An ``aiomysql.Pool`` from which a connection is acquired.
+        sql: Parameterised SQL string with ``%s`` placeholders.
+        params: Tuple of values to bind to the placeholders.
+
+    Returns:
+        List of row dicts.  Empty list if the query returns no rows.
+    """
     async with pool.acquire() as conn:
         async with conn.cursor(aiomysql.DictCursor) as cur:
             await cur.execute(sql, params)
@@ -182,7 +216,31 @@ async def run_variant_query(
     transcript_id: str | None,
     consequence_types: list[str] | None = None,
 ) -> list[dict]:
-    """Query transcript_variation for the given inputs."""
+    """
+    Query the ``transcript_variation``, ``variation_feature``, and ``variation``
+    tables for rows matching the supplied identifiers.
+
+    At least one of ``variant_id`` or ``transcript_id`` must be non-None (the
+    calling layer enforces this).  ``consequence_types``, when provided, further
+    filters rows using ``FIND_IN_SET`` against the MySQL SET column so that a
+    row is returned if *any* of the selected types is present.  Results are
+    capped at 300 rows by the SQL ``LIMIT`` clause.
+
+    Args:
+        pool: Connection pool for the variation DB.
+        variant_id: Prefix to match against ``variation.name`` (``LIKE
+            '{variant_id}%'``).  ``None`` to skip this filter.
+        transcript_id: Prefix to match against
+            ``transcript_variation.feature_stable_id``.  ``None`` to skip.
+        consequence_types: Optional list of consequence type strings to filter
+            on (e.g. ``["missense_variant", "stop_gained"]``).
+
+    Returns:
+        List of row dicts with columns: ``feature_stable_id``, ``name``
+        (variant name), ``consequence_types``, ``codon_allele_string``,
+        ``pep_allele_string``, ``sift_prediction``, ``sift_score``,
+        ``allele_string``.
+    """
     clauses: list[str] = []
     params: list[str] = []
 
@@ -209,7 +267,22 @@ async def run_marker_query(
     core_pool: aiomysql.Pool,
     variant_id: str,
 ) -> list[dict]:
-    """Query marker_synonym/marker in the core DB for matching KASP markers."""
+    """
+    Query the ``marker_synonym`` and ``marker`` tables in the core DB for KASP
+    primer data associated with the given variant.
+
+    Matches marker synonyms using a prefix ``LIKE`` pattern so that partial
+    variant IDs (e.g. chromosome-level prefixes) retrieve all associated markers.
+    Results are capped at 300 rows.
+
+    Args:
+        core_pool: Connection pool for the core DB.
+        variant_id: Variant name prefix to match against ``marker_synonym.name``.
+
+    Returns:
+        List of row dicts with columns: ``name`` (marker synonym), ``left_primer``,
+        ``right_primer``.  Empty list if no matching markers are found.
+    """
     return await _run_query(core_pool, _MARKER_SQL, (f"{variant_id}%",))
 
 
@@ -291,7 +364,19 @@ LIMIT 1
 
 
 async def fetch_canonical_transcript_id(pool: aiomysql.Pool, gene_id: str) -> str | None:
-    """Return the stable_id of the canonical transcript for *gene_id*, or None."""
+    """
+    Return the Ensembl stable ID of the canonical transcript for *gene_id*.
+
+    Joins ``gene`` to ``transcript`` on ``canonical_transcript_id`` so the result
+    is always the single transcript designated canonical in the core DB.
+
+    Args:
+        pool: Connection pool for the relevant species core DB.
+        gene_id: Ensembl gene stable ID (e.g. ``"TRAESCS3D02G273600"``).
+
+    Returns:
+        The transcript stable ID string, or ``None`` if the gene is not found.
+    """
     rows = await _run_query(pool, _CANONICAL_TX_SQL, (gene_id,))
     return rows[0]["stable_id"] if rows else None
 
@@ -351,6 +436,31 @@ async def fetch_homologs(
     gene_id: str,
     homology_type: str,
 ) -> list[dict]:
+    """
+    Query the Ensembl Compara database for homologous gene pairs of a given type.
+
+    Builds a parameterised ``OR``-chain of ``h.description = %s`` clauses from
+    the ``HOMOLOGY_TYPES`` mapping and executes ``_HOMOLOGY_SQL``, which joins
+    ``homology → homology_member → gene_member / genome_db / seq_member /
+    sequence`` twice — once for the query gene and once for the homologue — to
+    retrieve both sequences and CIGAR lines in a single query.
+
+    Args:
+        compara_pool: Connection pool for the Compara DB.
+        gene_id: Ensembl stable ID of the query gene.
+        homology_type: One of ``"orthologues"``, ``"homoeologues"``, or
+            ``"paralogues"``; maps to one or more Compara ``description`` values
+            via ``HOMOLOGY_TYPES``.
+
+    Returns:
+        List of row dicts with 11 columns: ``query_gene_id``, ``query_species``,
+        ``query_sequence``, ``query_perc_id``, ``query_cigar_line``,
+        ``homology_type``, ``homolog_gene_id``, ``homolog_species``,
+        ``homolog_perc_id``, ``homolog_cigar_line``, ``homolog_sequence``.
+
+    Raises:
+        ValueError: If *homology_type* is not a key of ``HOMOLOGY_TYPES``.
+    """
     if homology_type not in HOMOLOGY_TYPES:
         raise ValueError(f"Unknown homology_type '{homology_type}'.")
     descriptions = HOMOLOGY_TYPES[homology_type]

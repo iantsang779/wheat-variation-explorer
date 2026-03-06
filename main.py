@@ -125,12 +125,33 @@ _fasta_cache: OrderedDict[str, dict[str, Any]] = OrderedDict()
 
 
 def _fasta_cache_store(token: str, fasta: str, gene_count: int) -> None:
+    """
+    Insert a FASTA result into the FASTA cache, evicting the oldest entry if full.
+
+    Args:
+        token: UUID string used as the cache key.
+        fasta: Raw FASTA-formatted string returned by the Ensembl sequence endpoint.
+        gene_count: Number of gene IDs whose sequences are contained in *fasta*.
+    """
     if len(_fasta_cache) >= _CACHE_MAX_ENTRIES:
         _fasta_cache.popitem(last=False)
     _fasta_cache[token] = {"fasta": fasta, "gene_count": gene_count, "ts": time.time()}
 
 
 def _fasta_cache_get(token: str) -> dict[str, Any]:
+    """
+    Retrieve a FASTA result from the cache by token.
+
+    Args:
+        token: UUID string used as the cache key.
+
+    Returns:
+        The cached entry dict containing keys ``fasta``, ``gene_count``, and ``ts``.
+
+    Raises:
+        HTTPException(404): If the token is not present or the entry has exceeded the
+            30-minute TTL.
+    """
     entry = _fasta_cache.get(token)
     if entry is None:
         raise HTTPException(
@@ -155,6 +176,14 @@ _annotate_cache: OrderedDict[str, dict[str, Any]] = OrderedDict()
 
 
 def _annotate_cache_store(token: str, data: dict) -> None:
+    """
+    Insert a gene annotation result into the annotate cache, evicting the oldest
+    entry if the cache has reached its maximum size.
+
+    Args:
+        token: UUID string used as the cache key.
+        data: Serialised ``AnnotateResponse`` dict (gene metadata + transcript segments).
+    """
     if len(_annotate_cache) >= _CACHE_MAX_ENTRIES:
         _annotate_cache.popitem(last=False)
     _annotate_cache[token] = {"data": data, "ts": time.time()}
@@ -168,6 +197,14 @@ _prot_annotate_cache: OrderedDict[str, dict[str, Any]] = OrderedDict()
 
 
 def _prot_cache_store(token: str, data: dict) -> None:
+    """
+    Insert a protein annotation result into the protein annotation cache, evicting
+    the oldest entry if the cache has reached its maximum size.
+
+    Args:
+        token: UUID string used as the cache key.
+        data: Serialised ``ProteinAnnotateResponse`` dict (protein sequence + domain features).
+    """
     if len(_prot_annotate_cache) >= _CACHE_MAX_ENTRIES:
         _prot_annotate_cache.popitem(last=False)
     _prot_annotate_cache[token] = {"data": data, "ts": time.time()}
@@ -181,6 +218,22 @@ _species_core_pools: dict[str, Any] = {}
 
 
 async def _get_species_core_pool(species: str):
+    """
+    Return a connection pool for the core DB of the given species, creating it
+    lazily on first access.
+
+    Pools are stored in the module-level ``_species_core_pools`` dict and reused
+    across requests.  The database name is resolved via ``discover_latest_db``
+    using the pattern ``{species}_core_*``.
+
+    Args:
+        species: Ensembl species key, e.g. ``"oryza_sativa"``.  Must be a member
+            of ``SUPPORTED_SPECIES``; callers are responsible for validating this
+            before invoking the function.
+
+    Returns:
+        An ``aiomysql.Pool`` connected to the latest core DB for *species*.
+    """
     if species not in _species_core_pools:
         db_name = await discover_latest_db(f"{species}_core_")
         _species_core_pools[species] = await create_pool(db_name)
@@ -250,6 +303,7 @@ class QueryRequest(BaseModel):
 
     @model_validator(mode="after")
     def at_least_one_field(self) -> "QueryRequest":
+        """Ensure at least one of variant_id or transcript_id is supplied."""
         if not self.variant_id and not self.transcript_id:
             raise ValueError(
                 "At least one search parameter (variant_id or transcript_id) must be provided."
@@ -272,6 +326,10 @@ class SequenceRequest(BaseModel):
 
     @model_validator(mode="after")
     def validate_seq_request(self) -> "SequenceRequest":
+        """
+        Validate that gene_ids is non-empty, does not exceed the batch limit, and
+        that sequence_type is one of the accepted Ensembl sequence types.
+        """
         if not self.gene_ids:
             raise ValueError("At least one gene ID must be provided.")
         if len(self.gene_ids) > _MAX_SEQUENCE_IDS:
@@ -294,6 +352,7 @@ class AnnotateRequest(BaseModel):
 
     @model_validator(mode="after")
     def validate_annotate_request(self) -> "AnnotateRequest":
+        """Run validate_input on gene_id to enforce character and length constraints."""
         validate_input(self.gene_id, "gene_id")
         return self
 
@@ -427,12 +486,46 @@ _HOMO_ALL_COLS = [
 
 @app.get("/")
 async def serve_index():
+    """
+    Serve the single-page application entry point.
+
+    Returns:
+        The contents of ``static/index.html`` as an HTML response.
+    """
     index_path = _STATIC_DIR / "index.html"
     return FileResponse(str(index_path), media_type="text/html")
 
 
 @app.post("/api/query", response_model=QueryResponse)
 async def run_query(request: QueryRequest):
+    """
+    Run variant and KASP marker queries against the EBI MySQL databases and
+    return the joined results.
+
+    The variant query targets the variation DB (``variation_pool``) and the
+    marker query targets the core DB (``core_pool``).  When a ``variant_id``
+    is supplied both queries run concurrently via ``asyncio.gather``; when
+    only ``transcript_id`` is given, the marker query is skipped.
+
+    Strandedness for each unique transcript is fetched from the Ensembl REST
+    ``POST /lookup/id`` endpoint and inserted as a column immediately after
+    ``feature_stable_id``.
+
+    The result is stored in the in-memory ``_result_cache`` under a UUID token
+    that downstream download endpoints use for O(1) retrieval.
+
+    Args:
+        request: Validated ``QueryRequest`` containing optional ``variant_id``,
+            ``transcript_id``, and ``consequence_types`` filter list.
+
+    Returns:
+        ``QueryResponse`` with token, column list, rows, DB name, row count,
+        and a boolean indicating whether KASP marker data was found.
+
+    Raises:
+        HTTPException(400): If inputs fail validation or no records are found.
+        HTTPException(500): On unexpected database errors.
+    """
     # Validate and sanitise inputs
     try:
         variant_id = validate_input(request.variant_id, "variant_id")
@@ -495,6 +588,21 @@ async def run_query(request: QueryRequest):
 
 @app.get("/api/download/csv/{token}")
 async def download_csv(token: str):
+    """
+    Stream a cached query result as a CSV file download.
+
+    Args:
+        token: UUID token previously returned by ``POST /api/query`` or
+            ``POST /api/homology``.
+
+    Returns:
+        A ``StreamingResponse`` with ``Content-Disposition: attachment`` and
+        a filename derived from the cached entry (e.g. ``wheat_variants.csv``
+        or ``{gene_id}_homology.csv``).
+
+    Raises:
+        HTTPException(404): If the token is not found or has expired.
+    """
     entry = _cache_get(token)
     df = pd.DataFrame(entry["data"], columns=entry["columns"])
 
@@ -513,6 +621,24 @@ async def download_csv(token: str):
 
 @app.get("/api/download/excel/{token}")
 async def download_excel(token: str):
+    """
+    Stream a cached query result as an Excel (.xlsx) file download.
+
+    The DataFrame is written to an in-memory ``BytesIO`` buffer via
+    ``openpyxl`` before streaming, so no temporary file is created on disk.
+
+    Args:
+        token: UUID token previously returned by ``POST /api/query`` or
+            ``POST /api/homology``.
+
+    Returns:
+        A ``StreamingResponse`` with MIME type
+        ``application/vnd.openxmlformats-officedocument.spreadsheetml.sheet``
+        and a filename derived from the cached entry (e.g. ``wheat_variants.xlsx``).
+
+    Raises:
+        HTTPException(404): If the token is not found or has expired.
+    """
     entry = _cache_get(token)
     df = pd.DataFrame(entry["data"], columns=entry["columns"])
 
@@ -532,6 +658,30 @@ async def download_excel(token: str):
 
 @app.post("/api/sequences", response_model=SequenceResponse)
 async def fetch_sequences(request: SequenceRequest):
+    """
+    Fetch sequences for one or more Ensembl gene IDs from the Ensembl REST API
+    and return the result as FASTA text.
+
+    Each gene ID is validated individually via ``validate_input`` before the
+    batch request is sent.  The FASTA string is stored in ``_fasta_cache`` under
+    a UUID token for subsequent FASTA download requests.
+
+    Args:
+        request: Validated ``SequenceRequest`` containing a list of gene IDs
+            (max 50) and a ``sequence_type`` (one of ``genomic``, ``cdna``,
+            ``cds``, ``protein``).
+
+    Returns:
+        ``SequenceResponse`` with the UUID token, raw FASTA text, and the count
+        of gene IDs successfully submitted.
+
+    Raises:
+        HTTPException(400): If no valid gene IDs remain after filtering, or if
+            Ensembl rejects the request.
+        HTTPException(404): If one or more gene IDs are not found in Ensembl.
+        HTTPException(502): On unexpected Ensembl API errors.
+        HTTPException(504): On Ensembl REST API timeout.
+    """
     # Validate each gene ID individually
     validated_ids: list[str] = []
     for i, raw_id in enumerate(request.gene_ids):
@@ -598,6 +748,19 @@ async def fetch_sequences(request: SequenceRequest):
 
 @app.get("/api/download/fasta/{token}")
 async def download_fasta(token: str):
+    """
+    Stream a cached FASTA result as a plain-text file download.
+
+    Args:
+        token: UUID token previously returned by ``POST /api/sequences``.
+
+    Returns:
+        A ``StreamingResponse`` with ``Content-Disposition: attachment`` and
+        filename ``sequences.fasta``.
+
+    Raises:
+        HTTPException(404): If the token is not found or has expired.
+    """
     entry = _fasta_cache_get(token)
     return StreamingResponse(
         iter([entry["fasta"]]),
@@ -616,7 +779,31 @@ def _compute_segments(
     strand: int,
     exons: list[dict],
 ) -> list[SegmentInfo]:
-    """Map exon genomic coordinates onto a flat sequence string, inserting intron segments for gaps."""
+    """
+    Map a transcript's exon genomic coordinates onto the flat genomic sequence
+    string, producing an ordered list of exon and intron ``SegmentInfo`` objects.
+
+    Exons are sorted in transcript order (ascending for the forward strand,
+    descending for the reverse strand).  Any gap between consecutive exons
+    becomes an intron segment.  A leading gap before the first exon or a
+    trailing gap after the last exon is treated as a flanking intron/UTR region.
+
+    Sequence positions (``seq_start``, ``seq_end``) are 0-indexed, half-open
+    intervals into the genomic sequence string returned by Ensembl.
+
+    Args:
+        gene_start: Absolute chromosomal start position of the gene (1-indexed,
+            inclusive), as reported by the Ensembl lookup endpoint.
+        gene_end: Absolute chromosomal end position of the gene (1-indexed,
+            inclusive).
+        strand: Strand indicator; ``1`` for forward, ``-1`` for reverse.
+        exons: List of exon dicts, each containing ``start`` and ``end`` keys
+            with absolute chromosomal positions.
+
+    Returns:
+        List of ``SegmentInfo`` objects in 5′→3′ transcript order, alternating
+        between exon and intron entries as appropriate.
+    """
     gene_len = gene_end - gene_start + 1
     # Transcript order: ascending for +1 strand, descending for -1 (rev-complement)
     ordered = sorted(exons, key=lambda e: e["start"], reverse=(strand == -1))
@@ -669,6 +856,38 @@ def _compute_segments(
 
 @app.post("/api/annotate", response_model=AnnotateResponse)
 async def annotate_gene(request: AnnotateRequest):
+    """
+    Fetch gene metadata and genomic sequence from the Ensembl REST API and
+    compute exon/intron segment coordinates for every transcript.
+
+    Two concurrent requests are made to Ensembl:
+    - ``GET /lookup/id/{gene_id}?expand=1`` — gene metadata including all
+      transcript and exon objects.
+    - ``GET /sequence/id/{gene_id}?type=genomic`` — full genomic sequence.
+
+    For each transcript, ``_compute_segments`` converts absolute exon
+    coordinates into 0-indexed positions within the returned sequence string.
+    The canonical transcript is sorted first in the response; remaining
+    transcripts are ordered alphabetically by stable ID.
+
+    The result is cached in ``_annotate_cache`` under a UUID token for
+    potential future retrieval.
+
+    Args:
+        request: Validated ``AnnotateRequest`` containing the Ensembl gene ID
+            (e.g. ``TRAESCS3D02G273600``).
+
+    Returns:
+        ``AnnotateResponse`` with gene metadata, the full genomic sequence, and
+        a list of ``TranscriptAnnotation`` objects each containing ordered
+        ``SegmentInfo`` entries.
+
+    Raises:
+        HTTPException(400): If Ensembl reports an invalid gene ID.
+        HTTPException(404): If the gene ID or its sequence is not found in Ensembl.
+        HTTPException(502): On unexpected Ensembl API errors.
+        HTTPException(504): On Ensembl REST API timeout.
+    """
     gene_id = request.gene_id.strip()
 
     try:
@@ -768,6 +987,38 @@ async def annotate_gene(request: AnnotateRequest):
 
 @app.post("/api/annotate_protein", response_model=ProteinAnnotateResponse)
 async def annotate_protein(request: ProteinAnnotateRequest):
+    """
+    Fetch protein domain features from the EBI core database and the protein
+    sequence from the Ensembl REST API for a given gene.
+
+    The workflow proceeds as follows:
+    1. ``gene_id``, ``species``, and ``domains`` are validated; species must be
+       a key of ``SUPPORTED_SPECIES`` and every domain name must be a key of
+       ``DOMAIN_PREFIXES``.
+    2. A species-specific core DB pool is obtained (or lazily created) via
+       ``_get_species_core_pool``.
+    3. Two concurrent DB calls fetch the canonical transcript stable ID and all
+       matching protein domain features for the gene.
+    4. The canonical transcript ID is used to request the protein sequence from
+       ``GET /sequence/id/{transcript_id}?type=protein``.
+    5. The result is cached in ``_prot_annotate_cache`` and returned.
+
+    Args:
+        request: ``ProteinAnnotateRequest`` containing ``gene_id``, ``species``
+            (Ensembl species key), and ``domains`` (list of domain database
+            names to include, e.g. ``["Pfam", "Panther"]``).
+
+    Returns:
+        ``ProteinAnnotateResponse`` with a UUID token, gene ID, species,
+        protein sequence, and list of ``DomainFeature`` objects.
+
+    Raises:
+        HTTPException(400): If gene_id, species, or domain names fail validation.
+        HTTPException(404): If the gene is not found in the core DB or Ensembl.
+        HTTPException(500): On unexpected database errors.
+        HTTPException(502): On unexpected Ensembl API errors.
+        HTTPException(504): On Ensembl REST API timeout.
+    """
     # Validate gene_id
     try:
         gene_id = validate_input(request.gene_id.strip(), "gene_id")
@@ -859,6 +1110,34 @@ async def annotate_protein(request: ProteinAnnotateRequest):
 
 @app.post("/api/homology", response_model=HomologyResponse)
 async def fetch_homology(request: HomologyRequest):
+    """
+    Query the Ensembl Compara database for homologous genes of the given type
+    and return pairwise alignment data.
+
+    ``homology_type`` must be one of ``"orthologues"``, ``"homoeologues"``, or
+    ``"paralogues"`` (mapped to the underlying Compara ``description`` values in
+    ``HOMOLOGY_TYPES``).
+
+    Bytes values in sequence and CIGAR-line columns are decoded to UTF-8 strings
+    to handle the latin1 charset edge case returned by the EBI MySQL server.
+
+    The result (11 columns including sequences and CIGAR lines) is stored in
+    ``_result_cache`` under a UUID token so the shared download endpoints can
+    serve CSV and Excel exports without re-querying.
+
+    Args:
+        request: ``HomologyRequest`` containing ``gene_id`` and ``homology_type``.
+
+    Returns:
+        ``HomologyResponse`` with a UUID token, 7-column ``display_columns`` list
+        for the frontend table, 11-column ``all_columns`` list for exports,
+        the row data, row count, and the Compara DB name.
+
+    Raises:
+        HTTPException(400): If gene_id fails validation or homology_type is invalid.
+        HTTPException(404): If no homologues are found for the given gene.
+        HTTPException(500): On unexpected database errors.
+    """
     try:
         gene_id = validate_input(request.gene_id.strip(), "gene_id")
     except ValueError as exc:
@@ -903,6 +1182,45 @@ async def fetch_homology(request: HomologyRequest):
 
 @app.post("/api/primers", response_model=PrimerResponse)
 async def design_primers(req: PrimerRequest):
+    """
+    Design KASP or PCR primers flanking a given SNP using Primer3.
+
+    The flanking genomic sequence is fetched from the Ensembl REST API for the
+    region ``[position - flanking_bp, position + flanking_bp]``.  Primer3 is
+    invoked via ``asyncio.to_thread`` to avoid blocking the event loop.
+
+    **KASP mode** (``primer_type="kasp"``)
+        ``SEQUENCE_FORCE_LEFT_END`` pins the 3′ end of the left primer to the
+        SNP offset.  After design, the last base of the designed sequence is
+        replaced by the REF and ALT alleles to produce ``left_ref_seq`` and
+        ``left_alt_seq`` respectively.  Thermodynamic properties for the ALT
+        primer are independently computed via ``primer3.bindings.calcTm``,
+        ``calcHairpin``, and ``calcHomodimer``.
+
+    **PCR mode** (``primer_type="pcr"``)
+        ``SEQUENCE_TARGET`` requires that the designed primers flank the SNP
+        position.  Only ``left_ref_seq`` is populated; ``left_alt_seq`` and its
+        associated thermodynamic fields are ``None``.
+
+    ``flanking_bp`` is clamped to the range [50, 500]; ``num_pairs`` is clamped
+    to [1, 10].
+
+    Args:
+        req: ``PrimerRequest`` containing ``variant_name``, ``chromosome``,
+            ``position`` (1-based), ``allele_string`` (e.g. ``"A/T"``),
+            ``flanking_bp``, ``num_pairs``, and ``primer_type``.
+
+    Returns:
+        ``PrimerResponse`` with the flanking sequence, SNP offset, primer type,
+        and a list of ``PrimerPair`` objects ranked by Primer3 penalty score.
+
+    Raises:
+        HTTPException(400): If variant_name, chromosome, or primer_type fails
+            validation.
+        HTTPException(422): If Primer3 cannot design any primers for the region.
+        HTTPException(502): On unexpected Ensembl API errors.
+        HTTPException(504): On Ensembl REST API timeout.
+    """
     import primer3
     import warnings
 
