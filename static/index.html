@@ -170,7 +170,7 @@
             PlantBox — Open Source Tools for Plant Bioinformatics
           </h1>
           <p class="text-xs text-slate-500 mt-0.5">
-            Powered by EMBL-EBI Data
+            Powered by open source data from European Molecular Biology Laboratory - European Bioinformatics Institute (EMBL-EBI).
           </p>
         </div>
       </button>
@@ -204,9 +204,9 @@
       <p class="text-2xl text-accent font-medium mb-7">Open Source Tools for Plant Bioinformatics</p>
       <p class="max-w-4xl mx-auto text-slate-600 text-sm leading-relaxed text-justify">
         PlantBox is a lightweight interface for exploring plant genomic data hosted on Ensembl (EMBL-EBI).
-        It queries the most recent EMBL-EBI SQL databases and REST APIs directly, offering an efficient alternative to manual queries through the Ensembl browser.
-        The framework is adaptable — new tools can be added on request.
-        Things may occasionally change or break as upstream data sources evolve; if something doesn't work, please get in touch.
+        It queries the most recent EMBL-EBI SQL databases and REST APIs directly, offering an efficient alternative to manual queries through the Ensembl browser. PlantBox also provides additional features not available through Ensembl. 
+        <br><br>
+        The open source nature of bioinformatics data provides a wealth of opportunity to develop new features and tools to streamline research and scientific enquiry. If you have suggestions or feedback, please get in touch below.
       </p>
     </div>
 
@@ -329,7 +329,7 @@
 
     <!-- Caveats -->
     <div class="bg-surface-2 border border-surface-2 rounded-xl px-5 py-4 text-sm text-slate-600">
-      <p class="font-semibold text-slate-700 mb-1">A few things to know</p>
+      <p class="font-semibold text-slate-700 mb-1">Please Note:</p>
       <ul class="list-disc list-inside space-y-1 text-xs">
         <li>PlantBox queries live EMBL-EBI SQL and REST endpoints — both are subject to change; PlantBox always fetches the most recent dataset available.</li>
         <li>This is an adaptable framework; new tools can be added upon request.</li>
@@ -1622,156 +1622,269 @@
       <!-- Variant Explorer -->
       <section class="space-y-2">
         <h4 class="font-semibold text-slate-800">Variant Explorer &amp; KASP Primer Design</h4>
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs text-slate-600">
-          <div class="bg-surface-1 border border-surface-2 rounded-lg p-4 space-y-1">
-            <p class="font-semibold text-slate-700 mb-1">API Calls</p>
-            <p><span class="font-mono text-violet-700">POST /api/query</span> — variant + KASP marker search. Accepts <span class="font-mono">gene_id</span> or <span class="font-mono">transcript_id</span> + optional <span class="font-mono">variant_id</span>.</p>
-            <p><span class="font-mono text-violet-700">POST /api/primers</span> — KASP or PCR primer design for a selected variant. Accepts <span class="font-mono">variant_name</span>, <span class="font-mono">chromosome</span>, <span class="font-mono">position</span>, <span class="font-mono">allele_string</span>, <span class="font-mono">flanking_bp</span> (50–500), <span class="font-mono">num_pairs</span> (1–10), <span class="font-mono">primer_type</span>.</p>
-            <p><span class="font-mono text-violet-700">GET /api/download/csv/{token}</span> and <span class="font-mono text-violet-700">/excel/{token}</span> — stream cached rows as CSV or Excel.</p>
-          </div>
-          <div class="bg-surface-1 border border-surface-2 rounded-lg p-4 space-y-1">
-            <p class="font-semibold text-slate-700 mb-1">Data Flow</p>
-            <p><strong>/api/query:</strong> <code>fetch_and_join()</code> fires <code>run_variant_query()</code> and <code>run_marker_query()</code> concurrently via <code>asyncio.gather</code>, then left-joins on <code>variant_name</code>. <code>_fetch_strandedness()</code> makes a batched <code>POST /lookup/id</code> to the Ensembl REST API and inserts a Strandedness column. Results serialised and stored in <code>_result_cache</code> under a UUID token.</p>
-            <p><strong>/api/primers:</strong> fetches flanking sequence from <code>GET /sequence/region/triticum_aestivum/{chr}:{s}..{e}</code>, then calls <code>primer3.design_primers()</code> inside <code>asyncio.to_thread()</code> (blocking call offloaded). ALT primer thermodynamics computed with <code>calcTm</code>, <code>calcHairpin</code>, <code>calcHomodimer</code>. No caching — direct response.</p>
-          </div>
-          <div class="bg-surface-1 border border-surface-2 rounded-lg p-4 space-y-1">
-            <p class="font-semibold text-slate-700 mb-1">Databases &amp; Caches</p>
-            <p><strong>variation_pool</strong> → <span class="font-mono">triticum_aestivum_variation_*</span> on <span class="font-mono">mysql-eg-publicsql.ebi.ac.uk:4157</span> — variant consequence, SIFT, allele strings.</p>
-            <p><strong>core_pool</strong> → <span class="font-mono">triticum_aestivum_core_*</span> — BBSRC WRC KASP marker left/right primers.</p>
-            <p><strong>_result_cache</strong> — OrderedDict, TTL 30 min, max 100 entries. Token lookup is O(1); download endpoints reuse it without re-querying.</p>
-          </div>
+        <div class="bg-surface-1 border border-surface-2 rounded-lg p-4 text-xs text-slate-600 space-y-3">
+          <table class="w-full border-collapse">
+            <thead>
+              <tr class="border-b border-surface-2">
+                <th class="text-left font-semibold text-slate-700 py-1.5 pr-4 w-32">Category</th>
+                <th class="text-left font-semibold text-slate-700 py-1.5">Details</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-surface-2">
+              <tr>
+                <td class="font-semibold text-slate-700 py-2 pr-4 align-top">API Calls</td>
+                <td class="py-2 align-top text-justify space-y-1">
+                  <p><span class="font-mono text-violet-700">POST /api/query</span> — variant + KASP marker search. Accepts <span class="font-mono">gene_id</span> or <span class="font-mono">transcript_id</span> + optional <span class="font-mono">variant_id</span>.</p>
+                  <p><span class="font-mono text-violet-700">POST /api/primers</span> — KASP or PCR primer design for a selected variant. Accepts <span class="font-mono">variant_name</span>, <span class="font-mono">chromosome</span>, <span class="font-mono">position</span>, <span class="font-mono">allele_string</span>, <span class="font-mono">flanking_bp</span> (50–500), <span class="font-mono">num_pairs</span> (1–10), <span class="font-mono">primer_type</span>.</p>
+                  <p><span class="font-mono text-violet-700">GET /api/download/csv/{token}</span> and <span class="font-mono text-violet-700">/excel/{token}</span> — stream cached rows as CSV or Excel.</p>
+                </td>
+              </tr>
+              <tr>
+                <td class="font-semibold text-slate-700 py-2 pr-4 align-top">Data Flow</td>
+                <td class="py-2 align-top text-justify space-y-1">
+                  <p><strong>/api/query:</strong> <code>fetch_and_join()</code> fires <code>run_variant_query()</code> and <code>run_marker_query()</code> concurrently via <code>asyncio.gather</code>, then left-joins on <code>variant_name</code>. <code>_fetch_strandedness()</code> makes a batched <code>POST /lookup/id</code> to the Ensembl REST API and inserts a Strandedness column. Results serialised and stored in <code>_result_cache</code> under a UUID token.</p>
+                  <p><strong>/api/primers:</strong> fetches flanking sequence from <code>GET /sequence/region/triticum_aestivum/{chr}:{s}..{e}</code>, then calls <code>primer3.design_primers()</code> inside <code>asyncio.to_thread()</code> (blocking call offloaded). ALT primer thermodynamics computed with <code>calcTm</code>, <code>calcHairpin</code>, <code>calcHomodimer</code>. No caching — direct response.</p>
+                </td>
+              </tr>
+              <tr>
+                <td class="font-semibold text-slate-700 py-2 pr-4 align-top">Databases &amp; Caches</td>
+                <td class="py-2 align-top text-justify space-y-1">
+                  <p><strong>variation_pool</strong> → <span class="font-mono">triticum_aestivum_variation_*</span> on <span class="font-mono">mysql-eg-publicsql.ebi.ac.uk:4157</span> — variant consequence, SIFT, allele strings.</p>
+                  <p><strong>core_pool</strong> → <span class="font-mono">triticum_aestivum_core_*</span> — BBSRC WRC KASP marker left/right primers.</p>
+                  <p><strong>_result_cache</strong> — OrderedDict, TTL 30 min, max 100 entries. Token lookup is O(1); download endpoints reuse it without re-querying.</p>
+                </td>
+              </tr>
+            </tbody>
+          </table>
         </div>
       </section>
 
       <!-- Annotate DNA -->
       <section class="space-y-2">
         <h4 class="font-semibold text-slate-800">Annotate DNA Sequence</h4>
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs text-slate-600">
-          <div class="bg-surface-1 border border-surface-2 rounded-lg p-4 space-y-1">
-            <p class="font-semibold text-slate-700 mb-1">API Calls</p>
-            <p><span class="font-mono text-violet-700">POST /api/annotate</span> — accepts <span class="font-mono">{ gene_id }</span> (validated via <code>validate_input()</code>).</p>
-            <p>Returns <code>AnnotateResponse</code>: gene metadata, full genomic sequence, per-transcript segment lists (exon/intron), and the canonical transcript ID.</p>
-          </div>
-          <div class="bg-surface-1 border border-surface-2 rounded-lg p-4 space-y-1">
-            <p class="font-semibold text-slate-700 mb-1">Data Flow</p>
-            <p>Two concurrent <code>httpx</code> requests via <code>asyncio.gather</code>:</p>
-            <p>① <span class="font-mono">GET /lookup/id/{gene_id}?expand=1</span> — gene metadata + transcript/exon coordinates.</p>
-            <p>② <span class="font-mono">GET /sequence/id/{gene_id}?type=genomic</span> — full genomic sequence string.</p>
-            <p><code>_compute_segments()</code> maps each transcript's exon coordinates onto the genomic sequence to produce <code>{type, seq_start, seq_end, number}</code> segments. Canonical transcript sorted first. Result stored in <code>_annotate_cache</code>.</p>
-          </div>
-          <div class="bg-surface-1 border border-surface-2 rounded-lg p-4 space-y-1">
-            <p class="font-semibold text-slate-700 mb-1">Databases &amp; Caches</p>
-            <p>No MySQL query — purely REST-based.</p>
-            <p><strong>_annotate_cache</strong> — same OrderedDict policy (TTL 30 min, max 100). Keyed by UUID token returned to the client.</p>
-            <p>Frontend renders colour-coded spans (odd exon = blue, even exon = sky, intron/flank = grey) with per-segment hover tooltips showing type, number, and length.</p>
-          </div>
+        <div class="bg-surface-1 border border-surface-2 rounded-lg p-4 text-xs text-slate-600 space-y-3">
+          <table class="w-full border-collapse">
+            <thead>
+              <tr class="border-b border-surface-2">
+                <th class="text-left font-semibold text-slate-700 py-1.5 pr-4 w-32">Category</th>
+                <th class="text-left font-semibold text-slate-700 py-1.5">Details</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-surface-2">
+              <tr>
+                <td class="font-semibold text-slate-700 py-2 pr-4 align-top">API Calls</td>
+                <td class="py-2 align-top text-justify space-y-1">
+                  <p><span class="font-mono text-violet-700">POST /api/annotate</span> — accepts <span class="font-mono">{ gene_id }</span> (validated via <code>validate_input()</code>).</p>
+                  <p>Returns <code>AnnotateResponse</code>: gene metadata, full genomic sequence, per-transcript segment lists (exon/intron), and the canonical transcript ID.</p>
+                </td>
+              </tr>
+              <tr>
+                <td class="font-semibold text-slate-700 py-2 pr-4 align-top">Data Flow</td>
+                <td class="py-2 align-top text-justify space-y-1">
+                  <p>Two concurrent <code>httpx</code> requests via <code>asyncio.gather</code>:</p>
+                  <p>① <span class="font-mono">GET /lookup/id/{gene_id}?expand=1</span> — gene metadata + transcript/exon coordinates.</p>
+                  <p>② <span class="font-mono">GET /sequence/id/{gene_id}?type=genomic</span> — full genomic sequence string.</p>
+                  <p><code>_compute_segments()</code> maps each transcript's exon coordinates onto the genomic sequence to produce <code>{type, seq_start, seq_end, number}</code> segments. Canonical transcript sorted first. Result stored in <code>_annotate_cache</code>.</p>
+                </td>
+              </tr>
+              <tr>
+                <td class="font-semibold text-slate-700 py-2 pr-4 align-top">Databases &amp; Caches</td>
+                <td class="py-2 align-top text-justify space-y-1">
+                  <p>No MySQL query — purely REST-based.</p>
+                  <p><strong>_annotate_cache</strong> — same OrderedDict policy (TTL 30 min, max 100). Keyed by UUID token returned to the client.</p>
+                  <p>Frontend renders colour-coded spans (odd exon = blue, even exon = sky, intron/flank = grey) with per-segment hover tooltips showing type, number, and length.</p>
+                </td>
+              </tr>
+            </tbody>
+          </table>
         </div>
       </section>
 
       <!-- Annotate Protein -->
       <section class="space-y-2">
         <h4 class="font-semibold text-slate-800">Annotate Amino Acid Sequence</h4>
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs text-slate-600">
-          <div class="bg-surface-1 border border-surface-2 rounded-lg p-4 space-y-1">
-            <p class="font-semibold text-slate-700 mb-1">API Calls</p>
-            <p><span class="font-mono text-violet-700">POST /api/annotate_protein</span> — accepts <span class="font-mono">{ gene_id, species, domains[] }</span>. Species must be in <code>SUPPORTED_SPECIES</code>; at least one domain database required.</p>
-            <p>Returns <code>ProteinAnnotateResponse</code>: protein sequence + domain feature list (type, hit_name, description, start, end).</p>
-          </div>
-          <div class="bg-surface-1 border border-surface-2 rounded-lg p-4 space-y-1">
-            <p class="font-semibold text-slate-700 mb-1">Data Flow</p>
-            <p><code>_get_species_core_pool()</code> lazily creates (or retrieves from <code>_species_core_pools</code>) an aiomysql pool for <span class="font-mono">{species}_core_*</span>.</p>
-            <p>Two concurrent DB calls: <code>fetch_canonical_transcript_id()</code> and <code>fetch_protein_domains()</code> query <span class="font-mono">gene → transcript → translation → protein_feature</span>, filtered to the canonical transcript and to selected domain prefixes (PF, PTHR, PS, PR, SSF).</p>
-            <p>Then <span class="font-mono">GET /sequence/id/{tx_id}?type=protein</span> fetches the protein sequence using the canonical transcript ID (avoids Ensembl's "multiple sequences" error).</p>
-            <p>Result cached in <code>_prot_annotate_cache</code>.</p>
-          </div>
-          <div class="bg-surface-1 border border-surface-2 rounded-lg p-4 space-y-1">
-            <p class="font-semibold text-slate-700 mb-1">Databases &amp; Caches</p>
-            <p><strong>species_core_pool(s)</strong> → <span class="font-mono">{species}_core_*</span> — one pool per species, created lazily and persisted for the server lifetime. Closed on shutdown.</p>
-            <p><strong>_species_core_pools</strong> — dict acting as a persistent pool registry (not TTL-evicted).</p>
-            <p><strong>_prot_annotate_cache</strong> — TTL 30 min, max 100. Client-side <code>paIntervals</code> getter decomposes the sequence at domain boundaries, priority-sorts overlaps (Pfam &gt; Panther &gt; Prosite &gt; Prints &gt; Superfamily), and renders colour-coded spans.</p>
-          </div>
+        <div class="bg-surface-1 border border-surface-2 rounded-lg p-4 text-xs text-slate-600 space-y-3">
+          <table class="w-full border-collapse">
+            <thead>
+              <tr class="border-b border-surface-2">
+                <th class="text-left font-semibold text-slate-700 py-1.5 pr-4 w-32">Category</th>
+                <th class="text-left font-semibold text-slate-700 py-1.5">Details</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-surface-2">
+              <tr>
+                <td class="font-semibold text-slate-700 py-2 pr-4 align-top">API Calls</td>
+                <td class="py-2 align-top text-justify space-y-1">
+                  <p><span class="font-mono text-violet-700">POST /api/annotate_protein</span> — accepts <span class="font-mono">{ gene_id, species, domains[] }</span>. Species must be in <code>SUPPORTED_SPECIES</code>; at least one domain database required.</p>
+                  <p>Returns <code>ProteinAnnotateResponse</code>: protein sequence + domain feature list (type, hit_name, description, start, end).</p>
+                </td>
+              </tr>
+              <tr>
+                <td class="font-semibold text-slate-700 py-2 pr-4 align-top">Data Flow</td>
+                <td class="py-2 align-top text-justify space-y-1">
+                  <p><code>_get_species_core_pool()</code> lazily creates (or retrieves from <code>_species_core_pools</code>) an aiomysql pool for <span class="font-mono">{species}_core_*</span>.</p>
+                  <p>Two concurrent DB calls: <code>fetch_canonical_transcript_id()</code> and <code>fetch_protein_domains()</code> query <span class="font-mono">gene → transcript → translation → protein_feature</span>, filtered to the canonical transcript and to selected domain prefixes (PF, PTHR, PS, PR, SSF).</p>
+                  <p>Then <span class="font-mono">GET /sequence/id/{tx_id}?type=protein</span> fetches the protein sequence using the canonical transcript ID (avoids Ensembl's "multiple sequences" error).</p>
+                  <p>Result cached in <code>_prot_annotate_cache</code>.</p>
+                </td>
+              </tr>
+              <tr>
+                <td class="font-semibold text-slate-700 py-2 pr-4 align-top">Databases &amp; Caches</td>
+                <td class="py-2 align-top text-justify space-y-1">
+                  <p><strong>species_core_pool(s)</strong> → <span class="font-mono">{species}_core_*</span> — one pool per species, created lazily and persisted for the server lifetime. Closed on shutdown.</p>
+                  <p><strong>_species_core_pools</strong> — dict acting as a persistent pool registry (not TTL-evicted).</p>
+                  <p><strong>_prot_annotate_cache</strong> — TTL 30 min, max 100. Client-side <code>paIntervals</code> getter decomposes the sequence at domain boundaries, priority-sorts overlaps (Pfam &gt; Panther &gt; Prosite &gt; Prints &gt; Superfamily), and renders colour-coded spans.</p>
+                </td>
+              </tr>
+            </tbody>
+          </table>
         </div>
       </section>
 
       <!-- Homology -->
       <section class="space-y-2">
         <h4 class="font-semibold text-slate-800">Pull Homologous Sequences</h4>
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs text-slate-600">
-          <div class="bg-surface-1 border border-surface-2 rounded-lg p-4 space-y-1">
-            <p class="font-semibold text-slate-700 mb-1">API Calls</p>
-            <p><span class="font-mono text-violet-700">POST /api/homology</span> — accepts <span class="font-mono">{ gene_id, homology_type }</span>. Valid types: <span class="font-mono">orthologues</span>, <span class="font-mono">homoeologues</span>, <span class="font-mono">paralogues</span> (each maps to multiple SQL <code>description</code> values).</p>
-            <p><span class="font-mono text-violet-700">GET /api/download/csv/{token}</span> and <span class="font-mono">/excel/{token}</span> — all 11 columns including full sequences and CIGAR lines. Filename: <span class="font-mono">{gene_id}_homology.csv</span>.</p>
-          </div>
-          <div class="bg-surface-1 border border-surface-2 rounded-lg p-4 space-y-1">
-            <p class="font-semibold text-slate-700 mb-1">Data Flow</p>
-            <p><code>fetch_homologs()</code> builds a parameterised OR-chain of <code>h.description = %s</code> clauses and queries <span class="font-mono">homology → homology_member → gene_member / genome_db / seq_member / sequence</span>, joined twice (once for the query gene, once for the homologue). Bytes in sequences and CIGAR lines are decoded UTF-8 (latin1 charset edge case).</p>
-            <p>Results cached in <code>_result_cache</code> via <code>_cache_store()</code> with <span class="font-mono">filename="{gene_id}_homology"</span>. The download endpoints reuse this entry and derive the filename from the cache.</p>
-          </div>
-          <div class="bg-surface-1 border border-surface-2 rounded-lg p-4 space-y-1">
-            <p class="font-semibold text-slate-700 mb-1">Databases &amp; Caches</p>
-            <p><strong>compara_pool</strong> → <span class="font-mono">ensembl_compara_plants_*</span> — Ensembl Compara database containing homology relationships, CIGAR alignments, and member sequences.</p>
-            <p><strong>_result_cache</strong> — shared with the Variant Explorer (keyed independently by UUID token).</p>
-            <p>Frontend reconstructs pairwise alignments client-side from CIGAR strings (<code>M</code> = consume residue, <code>D</code> = insert gap). Alignment wraps to container width via ResizeObserver.</p>
-          </div>
+        <div class="bg-surface-1 border border-surface-2 rounded-lg p-4 text-xs text-slate-600 space-y-3">
+          <table class="w-full border-collapse">
+            <thead>
+              <tr class="border-b border-surface-2">
+                <th class="text-left font-semibold text-slate-700 py-1.5 pr-4 w-32">Category</th>
+                <th class="text-left font-semibold text-slate-700 py-1.5">Details</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-surface-2">
+              <tr>
+                <td class="font-semibold text-slate-700 py-2 pr-4 align-top">API Calls</td>
+                <td class="py-2 align-top text-justify space-y-1">
+                  <p><span class="font-mono text-violet-700">POST /api/homology</span> — accepts <span class="font-mono">{ gene_id, homology_type }</span>. Valid types: <span class="font-mono">orthologues</span>, <span class="font-mono">homoeologues</span>, <span class="font-mono">paralogues</span> (each maps to multiple SQL <code>description</code> values).</p>
+                  <p><span class="font-mono text-violet-700">GET /api/download/csv/{token}</span> and <span class="font-mono">/excel/{token}</span> — all 11 columns including full sequences and CIGAR lines. Filename: <span class="font-mono">{gene_id}_homology.csv</span>.</p>
+                </td>
+              </tr>
+              <tr>
+                <td class="font-semibold text-slate-700 py-2 pr-4 align-top">Data Flow</td>
+                <td class="py-2 align-top text-justify space-y-1">
+                  <p><code>fetch_homologs()</code> builds a parameterised OR-chain of <code>h.description = %s</code> clauses and queries <span class="font-mono">homology → homology_member → gene_member / genome_db / seq_member / sequence</span>, joined twice (once for the query gene, once for the homologue). Bytes in sequences and CIGAR lines are decoded UTF-8 (latin1 charset edge case).</p>
+                  <p>Results cached in <code>_result_cache</code> via <code>_cache_store()</code> with <span class="font-mono">filename="{gene_id}_homology"</span>. The download endpoints reuse this entry and derive the filename from the cache.</p>
+                </td>
+              </tr>
+              <tr>
+                <td class="font-semibold text-slate-700 py-2 pr-4 align-top">Databases &amp; Caches</td>
+                <td class="py-2 align-top text-justify space-y-1">
+                  <p><strong>compara_pool</strong> → <span class="font-mono">ensembl_compara_plants_*</span> — Ensembl Compara database containing homology relationships, CIGAR alignments, and member sequences.</p>
+                  <p><strong>_result_cache</strong> — shared with the Variant Explorer (keyed independently by UUID token).</p>
+                  <p>Frontend reconstructs pairwise alignments client-side from CIGAR strings (<code>M</code> = consume residue, <code>D</code> = insert gap). Alignment wraps to container width via ResizeObserver.</p>
+                </td>
+              </tr>
+            </tbody>
+          </table>
         </div>
       </section>
 
       <!-- Sequence Retrieval -->
       <section class="space-y-2">
         <h4 class="font-semibold text-slate-800">Sequence Retrieval</h4>
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs text-slate-600">
-          <div class="bg-surface-1 border border-surface-2 rounded-lg p-4 space-y-1">
-            <p class="font-semibold text-slate-700 mb-1">API Calls</p>
-            <p><span class="font-mono text-violet-700">POST /api/sequences</span> — accepts a list of gene IDs and a sequence type (CDS, genomic, protein, cdna). Up to 50 IDs.</p>
-            <p><span class="font-mono text-violet-700">GET /api/download/fasta/{token}</span> — streams cached FASTA text.</p>
-          </div>
-          <div class="bg-surface-1 border border-surface-2 rounded-lg p-4 space-y-1">
-            <p class="font-semibold text-slate-700 mb-1">Data Flow</p>
-            <p>Calls <span class="font-mono">POST /sequence/id</span> on the Ensembl Plants REST API as a batch request. All sequence versions are returned. Result FASTA text stored in <code>_fasta_cache</code> under a UUID token.</p>
-          </div>
-          <div class="bg-surface-1 border border-surface-2 rounded-lg p-4 space-y-1">
-            <p class="font-semibold text-slate-700 mb-1">Databases &amp; Caches</p>
-            <p>No MySQL query — purely REST-based.</p>
-            <p><strong>_fasta_cache</strong> — OrderedDict, TTL 30 min, max 100 entries. The download endpoint does an O(1) token lookup and streams the stored FASTA string.</p>
-          </div>
+        <div class="bg-surface-1 border border-surface-2 rounded-lg p-4 text-xs text-slate-600 space-y-3">
+          <table class="w-full border-collapse">
+            <thead>
+              <tr class="border-b border-surface-2">
+                <th class="text-left font-semibold text-slate-700 py-1.5 pr-4 w-32">Category</th>
+                <th class="text-left font-semibold text-slate-700 py-1.5">Details</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-surface-2">
+              <tr>
+                <td class="font-semibold text-slate-700 py-2 pr-4 align-top">API Calls</td>
+                <td class="py-2 align-top text-justify space-y-1">
+                  <p><span class="font-mono text-violet-700">POST /api/sequences</span> — accepts a list of gene IDs and a sequence type (CDS, genomic, protein, cdna). Up to 50 IDs.</p>
+                  <p><span class="font-mono text-violet-700">GET /api/download/fasta/{token}</span> — streams cached FASTA text.</p>
+                </td>
+              </tr>
+              <tr>
+                <td class="font-semibold text-slate-700 py-2 pr-4 align-top">Data Flow</td>
+                <td class="py-2 align-top text-justify">
+                  <p>Calls <span class="font-mono">POST /sequence/id</span> on the Ensembl Plants REST API as a batch request. All sequence versions are returned. Result FASTA text stored in <code>_fasta_cache</code> under a UUID token.</p>
+                </td>
+              </tr>
+              <tr>
+                <td class="font-semibold text-slate-700 py-2 pr-4 align-top">Databases &amp; Caches</td>
+                <td class="py-2 align-top text-justify space-y-1">
+                  <p>No MySQL query — purely REST-based.</p>
+                  <p><strong>_fasta_cache</strong> — OrderedDict, TTL 30 min, max 100 entries. The download endpoint does an O(1) token lookup and streams the stored FASTA string.</p>
+                </td>
+              </tr>
+            </tbody>
+          </table>
         </div>
       </section>
 
       <!-- Caching layer -->
       <section class="space-y-2">
         <h4 class="font-semibold text-slate-800">In-Memory Cache Layer</h4>
-        <div class="bg-surface-1 border border-surface-2 rounded-lg p-4 text-xs text-slate-600 space-y-2">
-          <p>All result caches (<code>_result_cache</code>, <code>_fasta_cache</code>, <code>_annotate_cache</code>, <code>_prot_annotate_cache</code>) are Python <code>OrderedDict</code> instances stored on <code>app.state</code>. Each entry is a tuple <code>(timestamp, payload)</code>.</p>
-          <p><strong>Eviction policy:</strong> on every write, entries older than 30 minutes are expired first; if the dict still exceeds 100 entries, the oldest entry (FIFO) is removed.</p>
-          <p><strong>Token-based access:</strong> every POST endpoint returns a UUID token. Download endpoints do an O(1) dict lookup — no database re-query is ever needed to serve a download.</p>
-          <p><strong>Process isolation:</strong> caches are in-process RAM only. <code>uvicorn --workers 1</code> is mandatory — multiple workers would each have independent caches, causing token misses.</p>
-          <p><code>_species_core_pools</code> is a separate persistent dict (no TTL) holding one <code>aiomysql.Pool</code> per species string. Pools are created lazily on first use and closed during the FastAPI shutdown lifecycle event.</p>
+        <div class="bg-surface-1 border border-surface-2 rounded-lg p-4 text-xs text-slate-600 space-y-3">
+          <table class="w-full border-collapse">
+            <thead>
+              <tr class="border-b border-surface-2">
+                <th class="text-left font-semibold text-slate-700 py-1.5 pr-4 w-32">Aspect</th>
+                <th class="text-left font-semibold text-slate-700 py-1.5">Details</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-surface-2">
+              <tr>
+                <td class="font-semibold text-slate-700 py-2 pr-4 align-top">Storage</td>
+                <td class="py-2 align-top text-justify">All result caches (<code>_result_cache</code>, <code>_fasta_cache</code>, <code>_annotate_cache</code>, <code>_prot_annotate_cache</code>) are Python <code>OrderedDict</code> instances stored on <code>app.state</code>. Each entry is a tuple <code>(timestamp, payload)</code>.</td>
+              </tr>
+              <tr>
+                <td class="font-semibold text-slate-700 py-2 pr-4 align-top">Eviction</td>
+                <td class="py-2 align-top text-justify">On every write, entries older than 30 minutes are expired first; if the dict still exceeds 100 entries, the oldest entry (FIFO) is removed.</td>
+              </tr>
+              <tr>
+                <td class="font-semibold text-slate-700 py-2 pr-4 align-top">Token access</td>
+                <td class="py-2 align-top text-justify">Every POST endpoint returns a UUID token. Download endpoints do an O(1) dict lookup — no database re-query is ever needed to serve a download.</td>
+              </tr>
+              <tr>
+                <td class="font-semibold text-slate-700 py-2 pr-4 align-top">Process isolation</td>
+                <td class="py-2 align-top text-justify">Caches are in-process RAM only. <code>uvicorn --workers 1</code> is mandatory — multiple workers would each have independent caches, causing token misses.</td>
+              </tr>
+              <tr>
+                <td class="font-semibold text-slate-700 py-2 pr-4 align-top">Species pools</td>
+                <td class="py-2 align-top text-justify"><code>_species_core_pools</code> is a separate persistent dict (no TTL) holding one <code>aiomysql.Pool</code> per species string. Pools are created lazily on first use and closed during the FastAPI shutdown lifecycle event.</td>
+              </tr>
+            </tbody>
+          </table>
         </div>
       </section>
 
       <!-- EBI MySQL pools -->
       <section class="space-y-2">
         <h4 class="font-semibold text-slate-800">EBI MySQL Connection Pools</h4>
-        <div class="bg-surface-1 border border-surface-2 rounded-lg p-4 text-xs text-slate-600 space-y-2">
-          <p>All pools connect to <span class="font-mono font-semibold">mysql-eg-publicsql.ebi.ac.uk:4157</span> as user <span class="font-mono">ensro</span> (no password). At startup, <code>discover_latest_db()</code> lists all databases matching each prefix and picks the one with the highest numeric suffix (e.g. <span class="font-mono">110_1 &gt; 99_1</span>).</p>
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-2">
-            <div>
-              <p class="font-semibold text-slate-700">variation_pool</p>
-              <p>Database: <span class="font-mono">triticum_aestivum_variation_*</span>. Tables: <code>variation_feature</code>, <code>transcript_variation</code>, <code>allele</code>. Used by <code>run_variant_query()</code>.</p>
-            </div>
-            <div>
-              <p class="font-semibold text-slate-700">core_pool</p>
-              <p>Database: <span class="font-mono">triticum_aestivum_core_*</span>. Tables: <code>marker</code>, <code>marker_feature</code>, <code>seq_region</code>. Used by <code>run_marker_query()</code> to retrieve BBSRC WRC KASP primer sequences.</p>
-            </div>
-            <div>
-              <p class="font-semibold text-slate-700">compara_pool</p>
-              <p>Database: <span class="font-mono">ensembl_compara_plants_*</span>. Tables: <code>homology</code>, <code>homology_member</code>, <code>gene_member</code>, <code>genome_db</code>, <code>seq_member</code>, <code>sequence</code>. Used by <code>fetch_homologs()</code>.</p>
-            </div>
-            <div>
-              <p class="font-semibold text-slate-700">species_core_pool(s)</p>
-              <p>Database pattern: <span class="font-mono">{species}_core_*</span>. One pool per species (wheat, barley, rice, arabidopsis, maize). Tables: <code>gene</code>, <code>transcript</code>, <code>translation</code>, <code>protein_feature</code>. Used by <code>fetch_canonical_transcript_id()</code> and <code>fetch_protein_domains()</code>.</p>
-            </div>
-          </div>
+        <div class="bg-surface-1 border border-surface-2 rounded-lg p-4 text-xs text-slate-600 space-y-3">
+          <p class="text-justify">All pools connect to <span class="font-mono font-semibold">mysql-eg-publicsql.ebi.ac.uk:4157</span> as user <span class="font-mono">ensro</span> (no password). At startup, <code>discover_latest_db()</code> lists all databases matching each prefix and picks the one with the highest numeric suffix (e.g. <span class="font-mono">110_1 &gt; 99_1</span>).</p>
+          <table class="w-full border-collapse">
+            <thead>
+              <tr class="border-b border-surface-2">
+                <th class="text-left font-semibold text-slate-700 py-1.5 pr-4 w-40">Pool</th>
+                <th class="text-left font-semibold text-slate-700 py-1.5">Details</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-surface-2">
+              <tr>
+                <td class="font-mono font-semibold text-slate-700 py-2 pr-4 align-top">variation_pool</td>
+                <td class="py-2 align-top text-justify">Database: <span class="font-mono">triticum_aestivum_variation_*</span>. Tables: <code>variation_feature</code>, <code>transcript_variation</code>, <code>allele</code>. Used by <code>run_variant_query()</code>.</td>
+              </tr>
+              <tr>
+                <td class="font-mono font-semibold text-slate-700 py-2 pr-4 align-top">core_pool</td>
+                <td class="py-2 align-top text-justify">Database: <span class="font-mono">triticum_aestivum_core_*</span>. Tables: <code>marker</code>, <code>marker_feature</code>, <code>seq_region</code>. Used by <code>run_marker_query()</code> to retrieve BBSRC WRC KASP primer sequences.</td>
+              </tr>
+              <tr>
+                <td class="font-mono font-semibold text-slate-700 py-2 pr-4 align-top">compara_pool</td>
+                <td class="py-2 align-top text-justify">Database: <span class="font-mono">ensembl_compara_plants_*</span>. Tables: <code>homology</code>, <code>homology_member</code>, <code>gene_member</code>, <code>genome_db</code>, <code>seq_member</code>, <code>sequence</code>. Used by <code>fetch_homologs()</code>.</td>
+              </tr>
+              <tr>
+                <td class="font-mono font-semibold text-slate-700 py-2 pr-4 align-top">species_core_pool(s)</td>
+                <td class="py-2 align-top text-justify">Database pattern: <span class="font-mono">{species}_core_*</span>. One pool per species (wheat, barley, rice, arabidopsis, maize). Tables: <code>gene</code>, <code>transcript</code>, <code>translation</code>, <code>protein_feature</code>. Used by <code>fetch_canonical_transcript_id()</code> and <code>fetch_protein_domains()</code>.</td>
+              </tr>
+            </tbody>
+          </table>
         </div>
       </section>
 
@@ -1790,27 +1903,27 @@
             <tbody class="divide-y divide-surface-2">
               <tr>
                 <td class="font-mono text-teal-700 py-2 pr-4 align-top">POST /lookup/id</td>
-                <td class="py-2 align-top">Batch strandedness lookup called by <code>_fetch_strandedness()</code> after <code>/api/query</code>. Accepts a JSON body of transcript IDs; returns strand and chromosome metadata inserted as the <em>Strandedness</em> column in query results.</td>
+                <td class="py-2 align-top text-justify">Batch strandedness lookup called by <code>_fetch_strandedness()</code> after <code>/api/query</code>. Accepts a JSON body of transcript IDs; returns strand and chromosome metadata inserted as the <em>Strandedness</em> column in query results.</td>
               </tr>
               <tr>
                 <td class="font-mono text-teal-700 py-2 pr-4 align-top">GET /lookup/id/{id}?expand=1</td>
-                <td class="py-2 align-top">Gene metadata including transcript and exon coordinate arrays. Called concurrently with the genomic sequence endpoint by <code>/api/annotate</code>.</td>
+                <td class="py-2 align-top text-justify">Gene metadata including transcript and exon coordinate arrays. Called concurrently with the genomic sequence endpoint by <code>/api/annotate</code>.</td>
               </tr>
               <tr>
                 <td class="font-mono text-teal-700 py-2 pr-4 align-top">GET /sequence/id/{id}?type=genomic</td>
-                <td class="py-2 align-top">Full genomic sequence string for a gene. Called concurrently with the lookup endpoint by <code>/api/annotate</code>. <code>_compute_segments()</code> maps exon coordinates onto this string.</td>
+                <td class="py-2 align-top text-justify">Full genomic sequence string for a gene. Called concurrently with the lookup endpoint by <code>/api/annotate</code>. <code>_compute_segments()</code> maps exon coordinates onto this string.</td>
               </tr>
               <tr>
                 <td class="font-mono text-teal-700 py-2 pr-4 align-top">POST /sequence/id</td>
-                <td class="py-2 align-top">Batch FASTA retrieval for up to 50 gene IDs at a time. Called by <code>/api/sequences</code>. Response is stored verbatim in <code>_fasta_cache</code>.</td>
+                <td class="py-2 align-top text-justify">Batch FASTA retrieval for up to 50 gene IDs at a time. Called by <code>/api/sequences</code>. Response is stored verbatim in <code>_fasta_cache</code>.</td>
               </tr>
               <tr>
                 <td class="font-mono text-teal-700 py-2 pr-4 align-top">GET /sequence/id/{tx_id}?type=protein</td>
-                <td class="py-2 align-top">Protein sequence for the canonical transcript (queried by transcript ID, not gene ID, to avoid Ensembl's "multiple sequences" error). Called by <code>/api/annotate_protein</code>.</td>
+                <td class="py-2 align-top text-justify">Protein sequence for the canonical transcript (queried by transcript ID, not gene ID, to avoid Ensembl's "multiple sequences" error). Called by <code>/api/annotate_protein</code>.</td>
               </tr>
               <tr>
                 <td class="font-mono text-teal-700 py-2 pr-4 align-top">GET /sequence/region/<br>triticum_aestivum/{chr}:{s}..{e}</td>
-                <td class="py-2 align-top">Flanking genomic region around a SNP. Called by <code>/api/primers</code>; the returned sequence is passed to <code>primer3.design_primers()</code> with <code>SEQUENCE_FORCE_LEFT_END</code> (KASP) or <code>SEQUENCE_TARGET</code> (PCR) set at the SNP offset.</td>
+                <td class="py-2 align-top text-justify">Flanking genomic region around a SNP. Called by <code>/api/primers</code>; the returned sequence is passed to <code>primer3.design_primers()</code> with <code>SEQUENCE_FORCE_LEFT_END</code> (KASP) or <code>SEQUENCE_TARGET</code> (PCR) set at the SNP offset.</td>
               </tr>
             </tbody>
           </table>
