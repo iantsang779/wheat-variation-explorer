@@ -125,9 +125,18 @@ Endpoint: `POST /api/homology` — accepts `{ gene_id: string, homology_type: st
 - "Export alignment (.txt)" button triggers a client-side Blob download of the formatted alignment text.
 - CSV/Excel downloads include all 11 columns (sequences + CIGARs) and are named `{gene_id}_homology.csv/.xlsx`.
 
-### Primer / KASP Primer Designer
+### Variant Explorer & KASP Primer Design
 
-Endpoint: `POST /api/primers` — accepts `{ variant_name, chromosome, position, allele_string, flanking_bp=200, num_pairs=5, primer_type="kasp"|"pcr" }`.
+The landing page card is titled **Variant Explorer & KASP Primer Design**. The primer designer is embedded inside the Variant Explorer tab — there is no separate tool page for it.
+
+**Variant Explorer — result columns:**
+- `feature_stable_id` — Ensembl transcript stable ID
+- `Strandedness` — "Forward" or "Reverse", fetched via `POST /lookup/id` on the Ensembl REST API after the DB query (see `_fetch_strandedness()` in `main.py`); inserted immediately after `feature_stable_id`; silently null on REST failure
+- `Variant`, `Chromosome`, `Location` — split from `variant_name`
+- `consequence_types`, `codon_allele_string`, `pep_allele_string`, `sift_prediction`, `sift_score`, `allele_string`
+- `BBSRC WRC Left Primer`, `BBSRC WRC Right Primer` — renamed from `left_primer` / `right_primer` in `database.py`
+
+**Primer designer — endpoint:** `POST /api/primers` — accepts `{ variant_name, chromosome, position, allele_string, flanking_bp=200, num_pairs=5, primer_type="kasp"|"pcr" }`.
 
 **Backend flow:**
 1. Validate `variant_name` and `chromosome` via `validate_input()`; clamp `flanking_bp` to 50–500 and `num_pairs` to 1–10.
@@ -138,13 +147,20 @@ Endpoint: `POST /api/primers` — accepts `{ variant_name, chromosome, position,
 4. For KASP pairs, `left_ref_seq` and `left_alt_seq` are derived by replacing the 3′ base of the designed left primer with the REF and ALT alleles respectively.
 5. Returns `PrimerResponse` with `flanking_seq`, `snp_offset`, and up to `num_pairs` `PrimerPair` objects (Tm, GC%, hairpin Tm, self-complementarity, penalty).
 
-**`_VARIANT_SQL_BASE`** now includes `b.allele_string` (DNA-level alleles, e.g. `"A/T"`) as an extra column returned by all variant queries.
+**`_VARIANT_SQL_BASE`** includes `b.allele_string` (DNA-level alleles, e.g. `"A/T"`).
 
 **Frontend behaviour:**
-- Every row in the Variant Explorer table is clickable; clicking a row triggers `selectVariantForPrimers(row)`, which calls `fetchPrimers()` automatically.
-- Clicking the same row again deselects it and closes the panel.
-- The primer panel appears above the results table with a KASP/PCR toggle, loading/error state, an SVG diagram (backbone, SNP marker, primer arrows drawn to scale), a pair navigator (1–5), REF/ALT/Rev primer cards with stats, product size/penalty, and a CSV export button.
-- `buildPrimerSVG()` generates an inline SVG entirely client-side from the response coordinates.
+- Every row in the Variant Explorer table is clickable; clicking triggers `selectVariantForPrimers(row)` → `fetchPrimers()` automatically. Clicking the same row again deselects and closes the panel.
+- The primer panel header shows `Primer Design — {Variant} — {feature_stable_id}`.
+- The panel contains: KASP/PCR toggle, loading/error state, SVG diagram, pair navigator (1–5), REF/ALT/Rev primer cards with stats, product size/penalty, CSV export.
+- **Primer sequence display:** sequences in cards are rendered via `primerSeqHtml()` (adds `5'—` / `—3'` annotations) or `kaspSeqHtml()` (same, plus bolds the 3′ differentiating base for KASP REF/ALT primers).
+- **`buildPrimerSVG()`** generates an inline SVG showing:
+  - Top strand (5′→3′): actual nucleotide sequence from `flanking_seq`; left primer region coloured blue (REF/Fwd), context in grey
+  - KASP only — ALT primer row (orange) between strands: same region, only last base differs
+  - Bottom strand (3′→5′ displayed left-to-right): base-pair complement of top strand; right primer region coloured green
+  - SNP annotated with a **purple (`#7c3aed`) outlined rectangle** spanning both strands; allele string and legend entry also purple
+  - Matplotlib-style coloured-square legend (no inline text labels on strands)
+  - SVG pixel width scales to product length; container has `overflow-x-auto` for horizontal scrolling
 - `exportPrimers()` creates a client-side Blob CSV download named `{variant_name}_primers_{type}.csv`.
 - `resetState()` clears primer state alongside query results.
 
