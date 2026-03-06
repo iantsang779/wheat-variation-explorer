@@ -575,13 +575,13 @@
 
                 <!-- REF (or Left) primer card -->
                 <div class="rounded-lg border border-blue-100 bg-blue-50 p-3 text-sm space-y-1">
-                  <p class="font-semibold text-blue-800 text-xs uppercase tracking-wide"
+                  <p class="font-semibold text-blue-800 text-sm uppercase tracking-wide"
                     x-text="primerResult.primer_type === 'kasp' ? 'Fwd — REF allele' : 'Forward primer'"></p>
-                  <p class="font-mono text-xs text-slate-700 break-all"
+                  <p class="font-mono text-sm text-slate-700 break-all"
                     x-html="primerResult.primer_type === 'kasp'
                       ? kaspSeqHtml(primerResult.primer_pairs[primerPairIdx].left_ref_seq)
                       : primerSeqHtml(primerResult.primer_pairs[primerPairIdx].left_ref_seq)"></p>
-                  <div class="grid grid-cols-3 gap-1 pt-1 text-xs text-slate-600">
+                  <div class="grid grid-cols-3 gap-1 pt-1 text-sm text-slate-600">
                     <span>Tm <b x-text="primerResult.primer_pairs[primerPairIdx].left_tm + '°C'"></b></span>
                     <span>GC <b x-text="primerResult.primer_pairs[primerPairIdx].left_gc + '%'"></b></span>
                     <span>Hairpin <b x-text="primerResult.primer_pairs[primerPairIdx].left_hairpin_tm + '°C'"></b></span>
@@ -593,22 +593,22 @@
                 <!-- ALT primer card (KASP only) -->
                 <template x-if="primerResult.primer_type === 'kasp'">
                   <div class="rounded-lg border border-orange-100 bg-orange-50 p-3 text-sm space-y-1">
-                    <p class="font-semibold text-orange-800 text-xs uppercase tracking-wide">Fwd — ALT allele</p>
-                    <p class="font-mono text-xs text-slate-700 break-all"
+                    <p class="font-semibold text-orange-800 text-sm uppercase tracking-wide">Fwd — ALT allele</p>
+                    <p class="font-mono text-sm text-slate-700 break-all"
                       x-html="kaspSeqHtml(primerResult.primer_pairs[primerPairIdx].left_alt_seq)"></p>
-                    <p class="text-xs text-slate-500 italic">Identical to REF primer except 3′ base</p>
+                    <p class="text-sm text-slate-500 italic">Identical to REF primer except 3′ base</p>
                   </div>
                 </template>
 
                 <!-- Reverse primer card -->
                 <div class="rounded-lg border border-green-100 bg-green-50 p-3 text-sm space-y-1"
                   :class="primerResult.primer_type === 'kasp' ? 'sm:col-span-2' : ''">
-                  <p class="font-semibold text-green-800 text-xs uppercase tracking-wide">
+                  <p class="font-semibold text-green-800 text-sm uppercase tracking-wide">
                     <span x-text="primerResult.primer_type === 'kasp' ? 'Common reverse primer' : 'Reverse primer'"></span>
                   </p>
-                  <p class="font-mono text-xs text-slate-700 break-all"
+                  <p class="font-mono text-sm text-slate-700 break-all"
                     x-html="primerSeqHtml(primerResult.primer_pairs[primerPairIdx].right_seq)"></p>
-                  <div class="grid grid-cols-3 gap-1 pt-1 text-xs text-slate-600">
+                  <div class="grid grid-cols-3 gap-1 pt-1 text-sm text-slate-600">
                     <span>Tm <b x-text="primerResult.primer_pairs[primerPairIdx].right_tm + '°C'"></b></span>
                     <span>GC <b x-text="primerResult.primer_pairs[primerPairIdx].right_gc + '%'"></b></span>
                     <span>Hairpin <b x-text="primerResult.primer_pairs[primerPairIdx].right_hairpin_tm + '°C'"></b></span>
@@ -619,11 +619,11 @@
               </div>
 
               <!-- Pair summary row -->
-              <div class="flex items-center gap-4 text-xs text-slate-600 border-t border-slate-100 pt-2">
+              <div class="flex items-center gap-4 text-sm text-slate-600 border-t border-slate-100 pt-2">
                 <span>Product size: <b x-text="primerResult.primer_pairs[primerPairIdx].product_size + ' bp'"></b></span>
                 <span>Penalty: <b x-text="primerResult.primer_pairs[primerPairIdx].pair_penalty"></b></span>
                 <button @click="exportPrimers()"
-                  class="ml-auto flex items-center gap-1 text-xs font-medium text-slate-600 hover:text-blue-700 border border-slate-200 rounded-lg px-3 py-1.5 hover:border-blue-300 transition-colors">
+                  class="ml-auto flex items-center gap-1 text-sm font-medium text-slate-600 hover:text-blue-700 border border-slate-200 rounded-lg px-3 py-1.5 hover:border-blue-300 transition-colors">
                   Export all pairs (CSV)
                 </button>
               </div>
@@ -2329,19 +2329,19 @@
           const nC  = top.length;
 
           // Layout constants
-          const CW  = 7;     // character width px (monospace font-size 11 ≈ 6.6 px)
-          const FS  = 11;
-          const ML  = 20;    // left margin for strand labels
-          const MR  = 14;    // right margin
+          const CW  = 8.5;   // character width px (monospace font-size 14 ≈ 8.4 px)
+          const FS  = 14;
+          const ML  = 22;    // left margin for strand labels
+          const MR  = 16;    // right margin
           const W   = ML + nC * CW + MR;
 
           // Y positions
-          const Y_TOP     = 30;
-          const Y_ALT     = 46;                      // KASP ALT primer row
-          const Y_BOT     = isKasp ? 62 : 48;        // bottom strand
-          const Y_SNP_LBL = Y_BOT + 16;
-          const Y_LEG     = Y_SNP_LBL + 13;
-          const H         = Y_LEG + 14;
+          const Y_TOP     = 38;
+          const Y_ALT     = 58;                      // KASP ALT primer row
+          const Y_BOT     = isKasp ? 78 : 60;        // bottom strand
+          const Y_SNP_LBL = Y_BOT + 20;
+          const Y_LEG     = Y_SNP_LBL + 14;
+          const H         = Y_LEG + 16;
 
           // x-centre for a given position in flanking_seq space
           const xC = pos => ML + (pos - dS + 0.5) * CW;
@@ -2351,21 +2351,24 @@
 
           // ── Product size bracket ────────────────────────────────────
           const bL = xC(lpS) - CW / 2, bR = xC(rpE - 1) + CW / 2;
-          s += `<line x1="${bL}" y1="13" x2="${bR}" y2="13" stroke="#94a3b8" stroke-width="1"/>`;
-          s += `<line x1="${bL}" y1="10" x2="${bL}" y2="16" stroke="#94a3b8" stroke-width="1"/>`;
-          s += `<line x1="${bR}" y1="10" x2="${bR}" y2="16" stroke="#94a3b8" stroke-width="1"/>`;
-          s += `<text x="${(bL+bR)/2}" y="9" text-anchor="middle" font-size="8" fill="#94a3b8" font-family="sans-serif">${pair.product_size} bp</text>`;
+          s += `<line x1="${bL}" y1="16" x2="${bR}" y2="16" stroke="#94a3b8" stroke-width="1"/>`;
+          s += `<line x1="${bL}" y1="13" x2="${bL}" y2="19" stroke="#94a3b8" stroke-width="1"/>`;
+          s += `<line x1="${bR}" y1="13" x2="${bR}" y2="19" stroke="#94a3b8" stroke-width="1"/>`;
+          s += `<text x="${(bL+bR)/2}" y="11" text-anchor="middle" font-size="10" fill="#94a3b8" font-family="sans-serif">${pair.product_size} bp</text>`;
 
-          // ── SNP dashed line spanning both strands ───────────────────
-          s += `<line x1="${snpX}" y1="${Y_TOP-7}" x2="${snpX}" y2="${Y_BOT+7}" stroke="#ef4444" stroke-width="1.5" stroke-dasharray="2,2"/>`;
+          // ── SNP rectangle (outline only) spanning both strands ──────
+          const snpRX = snpX - CW / 2;
+          const snpRY = Y_TOP - 8;
+          const snpRH = Y_BOT + 8 - snpRY;
+          s += `<rect x="${snpRX}" y="${snpRY}" width="${CW}" height="${snpRH}" fill="none" stroke="#7c3aed" stroke-width="1.5" rx="1"/>`;
 
           // ── Strand direction labels ─────────────────────────────────
           const lbl = (x, y, t, fill='#64748b') =>
-            `<text x="${x}" y="${y}" font-size="8" fill="${fill}" font-family="sans-serif">${t}</text>`;
-          s += lbl(0, Y_TOP+3, "5'");
-          s += lbl(W-MR+2, Y_TOP+3, "3'");
-          s += lbl(0, Y_BOT+3, "3'");
-          s += lbl(W-MR+2, Y_BOT+3, "5'");
+            `<text x="${x}" y="${y}" font-size="10" fill="${fill}" font-family="sans-serif">${t}</text>`;
+          s += lbl(0, Y_TOP+4, "5'");
+          s += lbl(W-MR+2, Y_TOP+4, "3'");
+          s += lbl(0, Y_BOT+4, "3'");
+          s += lbl(W-MR+2, Y_BOT+4, "5'");
 
           // ── Top strand (REF / FWD primer in blue) ──────────────────
           for (let i = 0; i < nC; i++) {
@@ -2397,14 +2400,14 @@
           }
 
           // ── Allele annotation below SNP ─────────────────────────────
-          s += `<text x="${snpX}" y="${Y_SNP_LBL}" text-anchor="middle" font-size="8" fill="#ef4444" font-family="sans-serif">${result.allele_string}</text>`;
+          s += `<text x="${snpX}" y="${Y_SNP_LBL}" text-anchor="middle" font-size="10" fill="#7c3aed" font-family="sans-serif">${result.allele_string}</text>`;
 
           // ── Legend (matplotlib-style coloured squares + labels) ─────
           let lx = 4;
           const addLeg = (color, label) => {
-            s += `<rect x="${lx}" y="${Y_LEG}" width="8" height="8" fill="${color}" rx="1"/>`;
-            s += `<text x="${lx+11}" y="${Y_LEG+7}" font-size="8" fill="#374151" font-family="sans-serif">${label}</text>`;
-            lx += 11 + label.length * 5.2 + 8;
+            s += `<rect x="${lx}" y="${Y_LEG}" width="10" height="10" fill="${color}" rx="1"/>`;
+            s += `<text x="${lx+13}" y="${Y_LEG+9}" font-size="10" fill="#374151" font-family="sans-serif">${label}</text>`;
+            lx += 13 + label.length * 6.5 + 8;
           };
           if (isKasp) {
             addLeg('#2563eb', 'Fwd \u2014 REF allele');
@@ -2413,7 +2416,7 @@
             addLeg('#2563eb', 'Forward primer');
           }
           addLeg('#16a34a', isKasp ? 'Common reverse' : 'Reverse primer');
-          addLeg('#ef4444', 'SNP');
+          addLeg('#7c3aed', 'SNP');
 
           s += '</svg>';
           return s;
