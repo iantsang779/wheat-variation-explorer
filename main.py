@@ -197,23 +197,20 @@ def _annotate_cache_store(token: str, data: dict) -> None:
 _prot_annotate_cache: OrderedDict[str, dict[str, Any]] = OrderedDict()
 
 
-_promoter_cache: OrderedDict = OrderedDict()
+_promoter_cache: OrderedDict[str, dict[str, Any]] = OrderedDict()
 
-def _promoter_cache_store(data: dict) -> str:
+def _promoter_cache_store(token: str, data: dict) -> None:
     """
-    Store a promoter annotation result in the in-memory cache.
+    Insert a promoter annotation result into the promoter cache, evicting the
+    oldest entry if the cache has reached its maximum size.
 
     Args:
+        token: UUID string used as the cache key.
         data: Serialised ``PromoterResponse`` dict to cache.
-
-    Returns:
-        A UUID token string that can be used to retrieve the cached entry.
     """
-    token = str(uuid.uuid4())
     if len(_promoter_cache) >= _CACHE_MAX_ENTRIES:
         _promoter_cache.popitem(last=False)
     _promoter_cache[token] = {"data": data, "ts": time.time()}
-    return token
 
 
 def _prot_cache_store(token: str, data: dict) -> None:
@@ -446,6 +443,7 @@ class PromoterRequest(BaseModel):
     gene_id: str
     upstream_bp: int = 2000
 
+
 class PromoterHit(BaseModel):
     """A single cis-regulatory element hit within a promoter sequence."""
 
@@ -457,6 +455,7 @@ class PromoterHit(BaseModel):
     end: int          # exclusive
     matched_seq: str
     strand: str       # "+" or "-"
+
 
 class PromoterResponse(BaseModel):
     """Response body for the promoter annotation endpoint."""
@@ -533,6 +532,15 @@ _HOMO_ALL_COLS = [
 ]
 
 
+_RC = str.maketrans("ACGTacgt", "TGCAtgca")
+
+_IUPAC: dict[str, str] = {
+    'R': '[AG]', 'Y': '[CT]', 'S': '[GC]', 'W': '[AT]',
+    'K': '[GT]', 'M': '[AC]', 'B': '[CGT]', 'D': '[AGT]',
+    'H': '[ACT]', 'V': '[ACG]', 'N': '[ACGT]',
+}
+
+
 def _iupac_to_regex(consensus: str) -> str:
     """
     Convert an IUPAC consensus string to a Python regex pattern.
@@ -546,11 +554,6 @@ def _iupac_to_regex(consensus: str) -> str:
     Returns:
         A regex pattern string suitable for ``re.compile()``.
     """
-    _IUPAC = {
-        'R': '[AG]', 'Y': '[CT]', 'S': '[GC]', 'W': '[AT]',
-        'K': '[GT]', 'M': '[AC]', 'B': '[CGT]', 'D': '[AGT]',
-        'H': '[ACT]', 'V': '[ACG]', 'N': '[ACGT]',
-    }
     return ''.join(_IUPAC.get(c.upper(), c) for c in consensus)
 
 PROMOTER_MOTIFS: list[dict] = [
@@ -577,6 +580,11 @@ PROMOTER_MOTIFS: list[dict] = [
     # MYB / Circadian
     {"name": "MBS",             "consensus": "CAACTG",     "category": "MYB",            "function": "MYB TF binding, drought response",      "color_class": "bg-emerald-200"},
     {"name": "Evening element", "consensus": "AAATATCT",   "category": "Circadian",      "function": "Circadian clock regulation",            "color_class": "bg-teal-200"},
+]
+
+# Pre-compiled regex patterns for each motif; index-aligned with PROMOTER_MOTIFS.
+_PROMOTER_PATTERNS: list[re.Pattern] = [
+    re.compile(_iupac_to_regex(m["consensus"]), re.IGNORECASE) for m in PROMOTER_MOTIFS
 ]
 
 
@@ -1462,11 +1470,9 @@ def _scan_promoter_motifs(sequence: str) -> list[dict]:
         ``color_class``, ``start``, ``end``, ``matched_seq``, ``strand``),
         sorted ascending by ``start`` position.
     """
-    _RC = str.maketrans("ACGTacgt", "TGCAtgca")
     rev_comp = sequence[::-1].translate(_RC)
     hits = []
-    for motif in PROMOTER_MOTIFS:
-        pattern = re.compile(_iupac_to_regex(motif["consensus"]), re.IGNORECASE)
+    for motif, pattern in zip(PROMOTER_MOTIFS, _PROMOTER_PATTERNS):
         for strand, seq in (("+", sequence), ("-", rev_comp)):
             for m in pattern.finditer(seq):
                 start = m.start() if strand == "+" else len(sequence) - m.end()
@@ -1506,7 +1512,10 @@ async def promoter_annotate(req: PromoterRequest):
         HTTPException: 502 if the Ensembl REST sequence endpoint returns a non-2xx
                        status.
     """
-    gene_id = validate_input(req.gene_id, "gene_id")
+    try:
+        gene_id = validate_input(req.gene_id, "gene_id")
+    except ValueError as exc:
+        raise HTTPException(400, {"error": str(exc)})
     if not gene_id:
         raise HTTPException(400, {"error": "gene_id is required."})
     upstream_bp = max(200, min(5000, req.upstream_bp))
@@ -1544,16 +1553,15 @@ async def promoter_annotate(req: PromoterRequest):
         sequence = seq_resp.json()["seq"]
 
         if strand == -1:
-            _RC = str.maketrans("ACGTacgt", "TGCAtgca")
             sequence = sequence[::-1].translate(_RC)
 
     hits = _scan_promoter_motifs(sequence)
+    token = str(uuid.uuid4())
     result = PromoterResponse(
-        token="", gene_id=gene_id, display_name=dname,
+        token=token, gene_id=gene_id, display_name=dname,
         chromosome=chrom, gene_start=gstart, gene_end=gend,
         strand=strand, upstream_bp=upstream_bp,
         sequence=sequence, hits=[PromoterHit(**h) for h in hits],
     )
-    token = _promoter_cache_store(result.model_dump())
-    result.token = token
+    _promoter_cache_store(token, result.model_dump())
     return result
