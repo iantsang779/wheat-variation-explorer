@@ -506,9 +506,19 @@ function sizeDiagram() {
   const h = maxB + 80; // extra bottom padding for legend / labels
   diagram.style.width  = w + 'px';
   diagram.style.height = h + 'px';
-  // Tell the embedding iframe in index.html the true rendered size
+  // Tell the embedding iframe in index.html the true rendered size.
+  // Compute content height from element heights directly — using scrollHeight
+  // would include min-height:100vh on body, inflating the reported height and
+  // leaving a large gray gap below the diagram.
   if (window.parent !== window) {
-    window.parent.postMessage({ type: 'arch-size', width: w, height: h }, '*');
+    const headerEl = document.querySelector('header');
+    const legendEl = document.querySelector('.legend');
+    const headerH  = headerEl ? headerEl.offsetHeight : 0;
+    const legendH  = legendEl ? legendEl.offsetHeight : 0;
+    // .diagram-scroll has padding: 28px top, 48px bottom
+    const docH = headerH + legendH + 28 + h + 48;
+    const docW = w + 56; // .diagram-scroll has 28px left+right padding
+    window.parent.postMessage({ type: 'arch-size', width: docW, height: docH }, '*');
   }
 }
 
