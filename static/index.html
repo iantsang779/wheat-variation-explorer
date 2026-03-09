@@ -310,7 +310,7 @@
         <!-- Promoter & CRE Annotator -->
         <div class="bg-surface-1 border border-surface-2 rounded-xl p-5 flex flex-col gap-3 shadow-sm hover:shadow-md transition-shadow">
           <div>
-            <span class="text-base font-bold text-accent">Promoter &amp; CRE Annotator</span>
+            <span class="text-base font-bold text-accent">Promoter &amp; Cis-Regulatory Element Annotator</span>
             <p class="text-sm text-slate-700 mt-1.5 text-justify">
               Fetch an upstream promoter window and scan for 16 plant cis-regulatory elements (light, ABA, heat, defense, hormone, and circadian motifs).
               Two views: colour-coded sequence and graphical SVG overview showing motif positions on both strands.
@@ -1434,7 +1434,7 @@
           <span x-show="homoLoading">Searching…</span>
         </button>
         <button
-          @click="homoGeneId = 'TraesCS3A02G399000'; homoHomologyType = 'orthologues'"
+          @click="homoGeneId = 'TraesCS3A02G399000'; homoHomologyType = 'homoeologues'"
           class="btn-outline px-4 py-2.5 rounded-lg text-sm text-slate-600
                  focus:outline-none focus:ring-2 focus:ring-accent"
         >
@@ -1679,7 +1679,7 @@
     </button>
 
     <p class="text-slate-500 text-sm mb-4 text-center">
-      Fetch an upstream promoter window for any Ensembl Plants gene and scan it for 16 known plant cis-regulatory elements across light, ABA/drought, heat, defense, hormone, and circadian categories.
+      Fetch an upstream promoter window for any Ensembl Plants gene. <br>Scan promoter region against 16 known plant cis-regulatory elements across light, ABA/drought, heat, defense, hormone, and circadian categories.
     </p>
 
     <!-- Input panel -->
@@ -2163,7 +2163,7 @@
 
       <!-- Promoter & CRE Annotator -->
       <section class="space-y-2">
-        <h4 class="font-semibold text-slate-800">Promoter &amp; CRE Annotator</h4>
+        <h4 class="font-semibold text-slate-800">Promoter &amp; Cis-Regulatory Element Annotator</h4>
         <div class="bg-surface-1 border border-surface-2 rounded-lg p-4 text-xs text-slate-600 space-y-3">
           <table class="w-full border-collapse">
             <thead>
@@ -3318,7 +3318,7 @@
           if (!this.promResult) return '';
           const { sequence, hits, upstream_bp } = this.promResult;
           const seqLen = sequence.length;
-          const W = 800, barX = 20, barW = 760, barY = 35, barH = 14;
+          const W = 800, barX = 20, barW = 760, barY = 72, barH = 14;
           const COLOR_MAP = {
             'bg-yellow-200': '#fef08a', 'bg-yellow-100': '#fef9c3',
             'bg-sky-200': '#bae6fd', 'bg-sky-100': '#e0f2fe', 'bg-sky-300': '#7dd3fc',
@@ -3337,7 +3337,8 @@
           const legendEntries = [...seenCats.entries()];
           const legendCols = 4;
           const legendRows = Math.ceil(legendEntries.length / legendCols);
-          const svgH = 80 + legendRows * 22;
+          const legendStartY = barY + barH * 2 + 3 + 14;
+          const svgH = legendStartY + legendRows * 22 + 8;
 
           let rects = '';
           for (const h of hits) {
@@ -3353,25 +3354,34 @@
           const tssTip = barX + barW;
           const tssTriangle = `<polygon points="${tssTip},${barY - 6} ${tssTip + 8},${barY + barH/2} ${tssTip},${barY + barH + 6}" fill="#374151"/>`;
 
+          // Key (above the bar)
+          const key = `
+  <rect x="${barX}" y="8" width="12" height="12" fill="#bae6fd" rx="2"/>
+  <text x="${barX + 17}" y="19" font-size="11" fill="#374151">+ strand motifs</text>
+  <rect x="${barX + 155}" y="8" width="12" height="12" fill="#e5e7eb" rx="2" stroke="#94a3b8" stroke-width="1"/>
+  <text x="${barX + 172}" y="19" font-size="11" fill="#374151">− strand motifs</text>
+  <polygon points="${barX + 318},8 ${barX + 326},14 ${barX + 318},20" fill="#374151"/>
+  <text x="${barX + 331}" y="19" font-size="11" fill="#374151">T = Transcript Start</text>`;
+
           // Legend
           let legend = '';
           legendEntries.forEach(([cat, cc], i) => {
             const col = i % legendCols;
             const row = Math.floor(i / legendCols);
             const lx = barX + col * (barW / legendCols);
-            const ly = 75 + row * 22;
+            const ly = legendStartY + row * 22;
             const fill = COLOR_MAP[cc] ?? '#e5e7eb';
             legend += `<rect x="${lx}" y="${ly}" width="14" height="14" fill="${fill}" rx="2"/><text x="${lx + 18}" y="${ly + 11}" font-size="11" fill="#374151">${cat}</text>`;
           });
 
           return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${svgH}" style="font-family:sans-serif">
+  ${key}
+  <line x1="${barX}" y1="27" x2="${W - 10}" y2="27" stroke="#e5e7eb" stroke-width="1"/>
   <rect x="${barX}" y="${barY}" width="${barW}" height="${barH}" fill="#e5e7eb" rx="3"/>
   ${rects}
   ${tssTriangle}
   <text x="${barX}" y="${barY - 8}" font-size="11" fill="#6b7280">-${upstream_bp} bp</text>
-  <text x="${tssTip + 12}" y="${barY + 10}" font-size="11" fill="#374151" font-weight="bold">TSS</text>
-  <text x="${barX}" y="${barY + barH + 18}" font-size="10" fill="#94a3b8">+ strand</text>
-  <text x="${barX}" y="${barY + barH + 30}" font-size="10" fill="#94a3b8">- strand</text>
+  <text x="${tssTip + 12}" y="${barY + 10}" font-size="11" fill="#374151" font-weight="bold">T</text>
   ${legend}
 </svg>`;
         },
