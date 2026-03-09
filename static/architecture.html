@@ -49,8 +49,7 @@
 
   .diagram {
     position: relative;
-    width: 1240px;
-    height: 1020px;
+    /* width and height are set dynamically by sizeDiagram() */
   }
 
   .arrows-svg {
@@ -488,10 +487,32 @@ document.querySelectorAll('.node').forEach(node => {
   });
 });
 
+// ── Auto-size diagram to fit all nodes ────────────────────────────────────────
+// Measures the rightmost/bottommost edge of every .node and resizes the
+// diagram container accordingly, so adding a new node or endpoint never
+// requires a manual width/height update.
+function sizeDiagram() {
+  const diagram = document.getElementById('diagram');
+  let maxR = 0, maxB = 0;
+  document.querySelectorAll('.node').forEach(n => {
+    const r = n.offsetLeft + n.offsetWidth;
+    const b = n.offsetTop  + n.offsetHeight;
+    if (r > maxR) maxR = r;
+    if (b > maxB) maxB = b;
+  });
+  diagram.style.width  = (maxR + 48) + 'px';
+  diagram.style.height = (maxB + 48) + 'px';
+}
+
 // ── Init & resize ─────────────────────────────────────────────────────────────
-window.addEventListener('load',   drawArrows);
-window.addEventListener('resize', drawArrows);
-setTimeout(drawArrows, 120); // guard against late layout paint
+function init() {
+  sizeDiagram();  // expand container to fit all nodes first…
+  drawArrows();   // …then route arrows against the correct geometry
+}
+
+window.addEventListener('load',   init);
+window.addEventListener('resize', init);
+setTimeout(init, 120); // guard against late layout paint
 </script>
 </body>
 </html>
